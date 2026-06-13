@@ -138,6 +138,44 @@
     #quality-slider { flex: 1; accent-color: #3498db; }
     #quality-val { width: 30px; text-align: right; color: #ccc; font-weight: 600; }
 
+    #readability-indicator {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    #readability-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    #readability-text {
+      transition: color 0.2s;
+    }
+    #readability-percent {
+      color: #aaa;
+    }
+    #readability-bar-container {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #readability-bar {
+      width: 0%;
+      height: 100%;
+      background: #e74c3c;
+      border-radius: 3px;
+      transition: width 0.15s, background-color 0.15s;
+    }
+
     canvas { display: none; }
   </style>
 </head>
@@ -171,6 +209,17 @@
 
 <div id="footer">
   <div id="status-text">Prem "Iniciar" per connectar la càmera a l'ordinador</div>
+
+  <!-- Indicador de qualitat de text en temps real -->
+  <div id="readability-indicator">
+    <div id="readability-header">
+      <span id="readability-text">Nitidesa: --</span>
+      <span id="readability-percent">0%</span>
+    </div>
+    <div id="readability-bar-container">
+      <div id="readability-bar"></div>
+    </div>
+  </div>
 
   <div class="btn-row">
     <button id="btn-start">📡 Iniciar transmissió</button>
@@ -233,6 +282,11 @@
   const fpsLabel   = document.getElementById('fps-label');
   const qualitySlider = document.getElementById('quality-slider');
   const qualityVal    = document.getElementById('quality-val');
+  
+  const readabilityIndicator = document.getElementById('readability-indicator');
+  const readabilityText      = document.getElementById('readability-text');
+  const readabilityPercent   = document.getElementById('readability-percent');
+  const readabilityBar       = document.getElementById('readability-bar');
 
   qualitySlider.addEventListener('input', () => {
     qualityVal.textContent = qualitySlider.value + '%';
@@ -267,6 +321,7 @@
       statusDot.className = 'active';
       connLabel.textContent = 'Transmetent';
       statusText.textContent = 'Transmetent a l\'ordinador…';
+      if (readabilityIndicator) readabilityIndicator.style.display = 'flex';
 
       scheduleFrame();
     } catch (err) {
@@ -293,6 +348,7 @@
     connLabel.textContent = 'Aturat';
     statusText.textContent = 'Transmissió aturada.';
     fpsLabel.textContent = '-- fps';
+    if (readabilityIndicator) readabilityIndicator.style.display = 'none';
   }
 
   // ─── Bucle de captura i enviament ────────────────────────────────────────────
@@ -325,6 +381,9 @@
     canvas.height = Math.round(vh * scale);
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Avaluem la qualitat del text en temps real a la regió central del canvas
+    updateReadability(canvas, ctx);
 
     const quality = parseInt(qualitySlider.value) / 100;
 
@@ -387,6 +446,99 @@
     btnTorch.textContent = torchEnabled ? '🔦 ON' : '🔦';
     btnTorch.style.color = torchEnabled ? '#2ecc71' : '#f1c40f';
   });
+
+  // ─── Qualitat de Text en Temps Real ──────────────────────────────────────────
+  function updateReadability(canvas, ctx) {
+    if (!readabilityIndicator) return;
+    
+    // Agafem la regió central del canvas de 120x120 píxels per avaluar
+    const checkWidth = 120;
+    const checkHeight = 120;
+    const checkX = Math.round((canvas.width - checkWidth) / 2);
+    const checkY = Math.round((canvas.height - checkHeight) / 2);
+    
+    if (checkX < 0 || checkY < 0) return;
+    
+    try {
+      const imgData = ctx.getImageData(checkX, checkY, checkWidth, checkHeight);
+      const data = imgData.data;
+      const w = imgData.width;
+      const h = imgData.height;
+      
+      let minGray = 255;
+      let maxGray = 0;
+      let edgeSum = 0;
+      let count = 0;
+      
+      // Convertim a grisos i trobem el contrast global de la secció
+      const grays = new Uint8Array(w * h);
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = Math.round((data[i] + data[i+1] + data[i+2]) / 3);
+        grays[i / 4] = gray;
+        if (gray < minGray) minGray = gray;
+        if (gray > maxGray) maxGray = gray;
+      }
+      
+      const contrast = maxGray - minGray;
+      if (contrast < 40) {
+        setReadabilityUI(5, '⚠️ Sense text o massa fosc', '#e74c3c');
+        return;
+      }
+      
+      // Calculem les diferències de brillantor amb els veïns per detectar vores (Sobel/Laplacià simplificat)
+      for (let y = 1; y < h - 1; y += 2) {
+        for (let x = 1; x < w - 1; x += 2) {
+          const idx = y * w + x;
+          const val = grays[idx];
+          
+          const diffX = Math.abs(val - grays[idx + 1]);
+          const diffY = Math.abs(val - grays[idx + w]);
+          
+          if (diffX > 15 || diffY > 15) {
+            edgeSum += (diffX + diffY);
+            count++;
+          }
+        }
+      }
+      
+      const edgeDensity = count / ((w * h) / 4);
+      const avgEdgeStrength = count > 0 ? (edgeSum / count) : 0;
+      
+      let focusScore = Math.min(100, Math.round((avgEdgeStrength / 50) * 100));
+      let densityScore = Math.min(100, Math.round((edgeDensity / 0.16) * 100));
+      
+      let score = Math.round((focusScore * 0.6) + (densityScore * 0.4));
+      
+      // Penalitzem si el contrast global no és gaire fort (ex: lletra borrosa o fons similar)
+      if (contrast < 90) {
+        score = Math.round(score * (contrast / 90));
+      }
+      
+      score = Math.max(5, Math.min(99, score));
+      
+      if (score < 40) {
+        setReadabilityUI(score, '⚠️ Desenfocat o sense text', '#e74c3c');
+      } else if (score < 75) {
+        setReadabilityUI(score, '⚡ Enfocant... busca bon angle', '#f39c12');
+      } else {
+        setReadabilityUI(score, '✨ Nitidesa excel·lent! Fes la foto! ✨', '#2ecc71');
+      }
+    } catch (e) {
+      // Evitem aturar la càmera si hi ha algun error de lectura de context
+    }
+  }
+
+  function setReadabilityUI(score, label, color) {
+    if (readabilityPercent) readabilityPercent.textContent = score + '%';
+    if (readabilityText) {
+      readabilityText.textContent = label;
+      readabilityText.style.color = color;
+    }
+    if (readabilityBar) {
+      readabilityBar.style.width = score + '%';
+      readabilityBar.style.backgroundColor = color;
+    }
+  }
 </script>
 </body>
 </html>
