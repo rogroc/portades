@@ -128,6 +128,7 @@ window._biblio = {
   if (!relayImg) return; // pàgina sense el panel de relay (ex: mòbil)
 
   async function pollFrame() {
+    if (!isLocalHostOrIp()) return;
     try {
       const res = await fetch(`${getRelayBase()}/api/camera-frame?t=${Date.now()}`, {
         cache: 'no-store'
@@ -239,8 +240,14 @@ window._biblio = {
     }
   });
 
-  // Iniciem el polling en carregar la pàgina
-  pollTimer = setTimeout(pollFrame, 500);
+  // Iniciem el polling només si estem corrent localment (amb servidor Python)
+  if (isLocalHostOrIp()) {
+    pollTimer = setTimeout(pollFrame, 500);
+  } else {
+    // Si estem a GitHub Pages, amaguem controls locals inútils
+    if (btnRelayOcr) btnRelayOcr.style.display = 'none';
+    if (relayBadge) relayBadge.style.display = 'none';
+  }
 })();
 
 // --- Filtre de Pre-processament d'Imatge (Visió per Computador Avançada) ---
