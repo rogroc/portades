@@ -375,8 +375,8 @@
     const vw = video.videoWidth  || 640;
     const vh = video.videoHeight || 480;
 
-    // Reduïm la mida per WiFi: màx 640px d'ample
-    const scale = Math.min(1, 640 / vw);
+    // Reduïm la mida per WiFi: màx 450px d'ample
+    const scale = Math.min(1, 450 / vw);
     canvas.width  = Math.round(vw * scale);
     canvas.height = Math.round(vh * scale);
 

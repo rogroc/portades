@@ -238,7 +238,7 @@ function preprocessImage(file) {
       let width = img.width * SCALE_FACTOR;
       let height = img.height * SCALE_FACTOR;
       
-      const MAX_WIDTH = 640;
+      const MAX_WIDTH = 450;
       if (width > MAX_WIDTH) {
         height = Math.round(height * (MAX_WIDTH / width));
         width = MAX_WIDTH;
@@ -716,8 +716,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // Mostrem la llegibilitat de la foto abans de fer OCR
       status.innerHTML = `⚙️ Nitidesa de la foto: <strong style="color: ${readabilityColor}">${readabilityScore}% (${readabilityLabel})</strong>.<br>Inicialitzant motor OCR i processant...`;
       
+      const isMobileDevice = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const ocrLang = isMobileDevice ? 'cat' : 'spa+cat';
+
       let currentPass = 1;
-      const worker = await Tesseract.createWorker('spa+cat', 1, {
+      const worker = await Tesseract.createWorker(ocrLang, 1, {
         logger: m => {
           if (m && m.status === 'recognizing text') {
             status.innerText = `🔍 Reconeixent text (Passada ${currentPass} de 4): ${Math.round(m.progress * 100)}%`;
