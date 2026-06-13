@@ -589,9 +589,9 @@
       nCtx.putImageData(nImgData, 0, 0);
       const normalUrl = normalCanvas.toDataURL('image/jpeg', 1.0);
       
-      // 3. Executem OCR localment al mòbil (worker d'un sol idioma 'cat' per a mòbils per estalviar memòria!)
+      // 3. Executem OCR localment al mòbil (usem 'spa+cat' per a millor reconeixement de castellà i català!)
       statusText.textContent = '⚙️ Inicialitzant motor d\'OCR local...';
-      const worker = await Tesseract.createWorker('cat', 1, {
+      const worker = await Tesseract.createWorker('spa+cat', 1, {
         logger: m => {
           if (m && m.status === 'recognizing text') {
             statusText.textContent = `🔍 Processant OCR: ${Math.round(m.progress * 100)}%`;
@@ -600,30 +600,80 @@
       });
       
       statusText.textContent = '🔍 Reconeixent lletres de la portada...';
-      const { data: { text: ocrText } } = await worker.recognize(normalUrl);
+      const { data: ocrResult } = await worker.recognize(normalUrl);
       await worker.terminate();
       
-      console.log("OCR completat al mòbil:", ocrText);
-      if (!ocrText || ocrText.trim().length < 4) {
-        const failMsg = '⚠️ No s\'ha trobat text suficient. Prova enfocant millor.';
+      const words = ocrResult.words || [];
+      console.log("OCR completat al mòbil. Paraules detectades:", words.map(w => w.text).join(' '));
+      
+      if (words.length === 0) {
+        const failMsg = '⚠️ No s\'ha trobat cap text a la portada. Enfoca millor.';
         statusText.style.color = '#e74c3c';
         statusText.textContent = failMsg;
         await sendSyncStatus({ error: true, message: failMsg });
         return;
       }
+
+      // Filtrem les paraules per mida (alçada) i confiança per treure soroll
+      const allHeights = words.map(w => w.bbox.y1 - w.bbox.y0);
+      const maxWordHeight = allHeights.length > 0 ? Math.max(...allHeights) : 0;
+      const heightThreshold = maxWordHeight * 0.20; // descartem elements un 80% més petits que la lletra més gran
+
+      const validWords = words.filter(w => 
+        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && 
+        w.confidence > 40
+      );
+
+      if (validWords.length === 0) {
+        const failMsg = '⚠️ Text detectat de baixa qualitat o massa petit.';
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = failMsg;
+        await sendSyncStatus({ error: true, message: failMsg });
+        return;
+      }
+
+      // Ordenem les paraules de dalt a baix i d'esquerra a dreta per tenir coherència de lectura
+      validWords.sort((a, b) => {
+        if (Math.abs(a.bbox.y0 - b.bbox.y0) < 15) {
+          return a.bbox.x0 - b.bbox.x0;
+        }
+        return a.bbox.y0 - b.bbox.y0;
+      });
+
+      let text = validWords.map(w => w.text).join(' ');
+
+      // Normalització d'artefactes d'OCR (correcció d'errors comuns)
+      text = text.replace(/ufia/gi, 'uña')
+                 .replace(/fio/gi, 'ño')
+                 .replace(/fia/gi, 'ña')
+                 .replace(/iriba/gi, 'i riba')
+                 .replace(/\brba\b/gi, 'riba')
+                 .replace(/ll['’]?imperí?/gi, "i l'imperi")
+                 .replace(/il['’]?imperí?/gi, "i l'imperi")
+                 .replace(/l['’]?imperí?/gi, "l'imperi");
+
+      // Neteja de paraules de parada (stopwords) per no contaminar la cerca d'Open Library
+      const stopwords = new Set(['el', 'la', 'els', 'les', 'un', 'una', 'de', 'del', 'i', 'a', 'en', 'per', 'amb', 'y', 'los', 'las', 'para', 'con', 'the', 'of', 'and', 'in', 'for']);
+      const cleanText = text.toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '');
+      const ocrWordsList = cleanText.split(/\s+/);
+      const keywords = ocrWordsList.filter(w => !stopwords.has(w) && w.length > 2);
+
+      console.log("Paraules clau filtrades per a cerca:", keywords);
+
+      if (keywords.length === 0) {
+        const failMsg = '⚠️ Text detectat buit de paraules clau reals.';
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = failMsg;
+        await sendSyncStatus({ error: true, message: failMsg });
+        return;
+      }
+
+      // Limitem a les 8 primeres paraules clau
+      const cleanQuery = keywords.slice(0, 8).join(' ');
       
       // 4. Cerca a Open Library des del mòbil
       statusText.textContent = '🌍 Buscant llibre a Open Library...';
-      const cleanQuery = ocrText.replace(/[^\w\sàéèíóòúüçñ]/gi, ' ').replace(/\s+/g, ' ').trim();
-      if (cleanQuery.length < 4) {
-        const failMsg = '⚠️ Text detectat massa curt per cercar.';
-        statusText.style.color = '#e74c3c';
-        statusText.textContent = failMsg;
-        await sendSyncStatus({ error: true, message: failMsg });
-        return;
-      }
-      
-      const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(cleanQuery)}&limit=5`;
+      const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(cleanQuery)}&limit=20`;
       const res = await fetch(searchUrl);
       if (!res.ok) {
         throw new Error('Error al connectar amb Open Library');
@@ -641,7 +691,7 @@
       // Fuzzy overlap
       let bestBook = null;
       let maxScore = -1;
-      const ocrWords = new Set(ocrText.toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/));
+      const ocrWords = new Set(cleanText.split(/\s+/));
       
       for (const doc of searchData.docs) {
         const titleWords = (doc.title || '').toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
