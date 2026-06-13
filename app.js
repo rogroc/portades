@@ -585,23 +585,33 @@ document.addEventListener('DOMContentLoaded', () => {
       path = '/';
     }
     
-    // Si s'arrenca en local per fitxer (file://), window.location.origin és "null".
-    // Ho corregim perquè l'enllaç contingui una referència útil.
     let baseOrigin = window.location.origin;
     if (baseOrigin === 'null' || !baseOrigin) {
-      baseOrigin = 'http://localhost:8000'; // fallback típic de desenvolupament
+      baseOrigin = 'http://localhost:8000';
     }
     
     const mobileUrl = `${baseOrigin}${path}camera_mobile/?session=${sessionID}`;
     
-    // Utilitzem Google Charts com a API principal de codis QR (és altament fiable i té menys bloquejos d'AdBlock)
-    qrImg.src = `https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=${encodeURIComponent(mobileUrl)}&choe=UTF-8`;
-    
-    // Si Google Charts és bloquejat, fem fallback a api.qrserver.com
-    qrImg.onerror = () => {
-      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
-      qrImg.onerror = null; // evitem bucle infinit si tampoc hi ha xarxa
-    };
+    // Generem el codi QR de forma 100% local i offline amb la llibreria qrcode.min.js
+    try {
+      // typeNumber = 0 (auto-detecció), errorCorrectionLevel = 'M' (mitjà)
+      const qr = qrcode(0, 'M');
+      qr.addData(mobileUrl);
+      qr.make();
+      
+      // La llibreria ens retorna un tag HTML de tipus <img src="data:image/gif;base64,...">
+      const qrImgHtml = qr.createImgTag(4, 6); // pixelsize = 4, margin = 6
+      const srcMatch = qrImgHtml.match(/src="([^"]+)"/);
+      if (srcMatch && srcMatch[1]) {
+        qrImg.src = srcMatch[1];
+      } else {
+        throw new Error("No s'ha pogut extreure el base64 del QR.");
+      }
+    } catch (qrErr) {
+      console.warn("Error generant QR local, provant fallback de Google Charts:", qrErr);
+      // Fallback extrem per si la llibreria no s'hagués carregat correctament
+      qrImg.src = `https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=${encodeURIComponent(mobileUrl)}&choe=UTF-8`;
+    }
     
     if (relayOpenMobile) {
       relayOpenMobile.href = mobileUrl;
