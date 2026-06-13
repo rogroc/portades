@@ -845,6 +845,30 @@ document.addEventListener('DOMContentLoaded', () => {
     debugImagesContainer.style.display = e.target.checked ? 'flex' : 'none';
   });
 
+  // Lazy-inicialitzador de PaddleOCR per a ordinador
+  let ocrInstance = null;
+  async function getOcrInstance() {
+    if (ocrInstance) return ocrInstance;
+    status.innerHTML = `⚙️ Descarregant models de xarxa neuronal de PaddleOCR (~20MB). Un moment, si us plau...`;
+    
+    const module = await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.3.2/+esm');
+    const PaddleOCR = module.PaddleOCR;
+
+    ocrInstance = await PaddleOCR.create({
+      lang: 'en', // L'idioma English reconeix tots els caràcters llatins (català, castellà, etc.)
+      ocrVersion: 'PP-OCRv5',
+      worker: false,
+      ensureServedFromHttp: () => {},
+      ortOptions: {
+        backend: 'wasm',
+        wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/',
+        numThreads: 4, // 4 fils a l'ordinador per a màxima velocitat
+        simd: true
+      }
+    });
+    return ocrInstance;
+  }
+
   fileInput.addEventListener('change', handleFile);
 
   async function handleFile(e) {
@@ -879,46 +903,47 @@ document.addEventListener('DOMContentLoaded', () => {
       debugInverted.src = invertedUrl;
       
       // Mostrem la llegibilitat de la foto abans de fer OCR
-      status.innerHTML = `⚙️ Nitidesa de la foto: <strong style="color: ${readabilityColor}">${readabilityScore}% (${readabilityLabel})</strong>.<br>Inicialitzant motor OCR i processant...`;
+      status.innerHTML = `⚙️ Nitidesa de la foto: <strong style="color: ${readabilityColor}">${readabilityScore}% (${readabilityLabel})</strong>.<br>Inicialitzant PaddleOCR...`;
       
-      const isMobileDevice = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const ocrLang = isMobileDevice ? 'cat' : 'spa+cat';
+      const ocr = await getOcrInstance();
+      
+      status.innerText = '🔍 Reconeixent text amb PaddleOCR (Passada 1 de 2: Imatge Normal)...';
+      const ocrNormalRes = await ocr.predict(normalUrl);
+      
+      status.innerText = '🔍 Reconeixent text amb PaddleOCR (Passada 2 de 2: Imatge Invertida)...';
+      const ocrInvertedRes = await ocr.predict(invertedUrl);
 
-      let currentPass = 1;
-      const worker = await Tesseract.createWorker(ocrLang, 1, {
-        logger: m => {
-          if (m && m.status === 'recognizing text') {
-            status.innerText = `🔍 Reconeixent text (Passada ${currentPass} de 4): ${Math.round(m.progress * 100)}%`;
-          } else if (m && m.status) {
-            status.innerText = `⚙️ Tesseract: ${m.status}...`;
-          }
-        }
+      // Convertim els elements de PaddleOCR a format compatible
+      const pageResultNormal = ocrNormalRes[0] || {};
+      const itemsNormal = pageResultNormal.items || [];
+      const wordsNormal = itemsNormal.map(item => {
+        const xs = item.poly.map(p => p[0]);
+        const ys = item.poly.map(p => p[1]);
+        return {
+          text: item.text,
+          confidence: Math.round(item.score * 100),
+          bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) },
+          source: 'normal_adaptive'
+        };
       });
-      
-      // Passada 1: Imatge Normal Adaptativa
-      currentPass = 1;
-      const { data: ocrResultNormal } = await worker.recognize(normalUrl);
-      
-      // Passada 2: Imatge Invertida Adaptativa
-      currentPass = 2;
-      const { data: ocrResultInverted } = await worker.recognize(invertedUrl);
 
-      // Passada 3: Imatge Normal Estirada
-      currentPass = 3;
-      const { data: ocrResultNormalStr } = await worker.recognize(normalUrlStretched);
+      const pageResultInverted = ocrInvertedRes[0] || {};
+      const itemsInverted = pageResultInverted.items || [];
+      const wordsInverted = itemsInverted.map(item => {
+        const xs = item.poly.map(p => p[0]);
+        const ys = item.poly.map(p => p[1]);
+        return {
+          text: item.text,
+          confidence: Math.round(item.score * 100),
+          bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) },
+          source: 'inverted_adaptive'
+        };
+      });
 
-      // Passada 4: Imatge Invertida Estirada
-      currentPass = 4;
-      const { data: ocrResultInvertedStr } = await worker.recognize(invertedUrlStretched);
-      
-      await worker.terminate();
+      const wordsNormalStr = [];
+      const wordsInvertedStr = [];
 
-      const wordsNormal = (ocrResultNormal.words || []).map(w => { w.source = 'normal_adaptive'; return w; });
-      const wordsInverted = (ocrResultInverted.words || []).map(w => { w.source = 'inverted_adaptive'; return w; });
-      const wordsNormalStr = (ocrResultNormalStr.words || []).map(w => { w.source = 'normal_stretched'; return w; });
-      const wordsInvertedStr = (ocrResultInvertedStr.words || []).map(w => { w.source = 'inverted_stretched'; return w; });
-
-      if (wordsNormal.length === 0 && wordsInverted.length === 0 && wordsNormalStr.length === 0 && wordsInvertedStr.length === 0) {
+      if (wordsNormal.length === 0 && wordsInverted.length === 0) {
         status.innerText = '❌ No s\'ha detectat cap paraula a la portada.';
         return;
       }

@@ -218,7 +218,16 @@
     }
     #relay-open-mobile:hover { text-decoration: underline; }
   </style>
-  <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js" defer></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "/npm/@techstark/opencv-js@%5E4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve) => { if (window.cv) { resolve(window.cv); } else { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; window.Module = { onRuntimeInitialized: () => resolve(window.cv) }; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; document.head.appendChild(script); } });",
+      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@%5E4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve) => { if (window.cv) { resolve(window.cv); } else { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; window.Module = { onRuntimeInitialized: () => resolve(window.cv) }; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; document.head.appendChild(script); } });",
+      "/npm/@techstark/opencv-js@^4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve) => { if (window.cv) { resolve(window.cv); } else { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; window.Module = { onRuntimeInitialized: () => resolve(window.cv) }; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; document.head.appendChild(script); } });",
+      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@^4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve) => { if (window.cv) { resolve(window.cv); } else { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; window.Module = { onRuntimeInitialized: () => resolve(window.cv) }; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; document.head.appendChild(script); } });"
+    }
+  }
+  </script>
 </head>
 <body>
   <div class="container">
