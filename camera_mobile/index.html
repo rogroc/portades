@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BiblioScan · Càmera Mòbil</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #header {
+      background: rgba(0,0,0,0.7);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    #header h1 {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #444;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #status-dot.active { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; animation: pulse 1.2s infinite; }
+    #status-dot.error  { background: #e74c3c; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    #camera-wrapper {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Reticle centrat */
+    #reticle {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    #reticle svg {
+      width: min(80vw, 340px);
+      height: min(80vw, 340px);
+      opacity: 0.7;
+    }
+
+    #fps-label {
+      position: absolute;
+      bottom: 8px;
+      right: 10px;
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.5);
+      background: rgba(0,0,0,0.4);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    #footer {
+      background: rgba(0,0,0,0.85);
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    #status-text {
+      font-size: 0.78rem;
+      color: #aaa;
+      text-align: center;
+      min-height: 1.1em;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 14px 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); opacity: 0.85; }
+
+    #btn-start { background: #2ecc71; color: #fff; }
+    #btn-stop  { background: #e74c3c; color: #fff; display: none; }
+    #btn-torch { background: #2c3e50; color: #f1c40f; display: none; }
+
+    #quality-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: #888;
+    }
+    #quality-row label { white-space: nowrap; }
+    #quality-slider { flex: 1; accent-color: #3498db; }
+    #quality-val { width: 30px; text-align: right; color: #ccc; font-weight: 600; }
+
+    canvas { display: none; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>📷 Càmera Mòbil</h1>
+  <div style="display:flex;align-items:center;gap:8px;font-size:0.75rem;color:#aaa;">
+    <span id="conn-label">Desconnectat</span>
+    <div id="status-dot"></div>
+  </div>
+</div>
+
+<div id="camera-wrapper">
+  <video id="video" autoplay playsinline muted></video>
+
+  <div id="reticle">
+    <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Cantonades de la retícula -->
+      <path d="M20 60 L20 20 L60 20" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+      <path d="M140 20 L180 20 L180 60" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+      <path d="M180 140 L180 180 L140 180" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+      <path d="M60 180 L20 180 L20 140" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+      <!-- Línia central -->
+      <line x1="20" y1="100" x2="180" y2="100" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="4,6"/>
+    </svg>
+  </div>
+
+  <div id="fps-label">-- fps</div>
+</div>
+
+<div id="footer">
+  <div id="status-text">Prem "Iniciar" per connectar la càmera a l'ordinador</div>
+
+  <div class="btn-row">
+    <button id="btn-start">📡 Iniciar transmissió</button>
+    <button id="btn-stop">⏹ Aturar</button>
+    <button id="btn-torch">🔦</button>
+  </div>
+
+  <div id="quality-row">
+    <label>Qualitat:</label>
+    <input type="range" id="quality-slider" min="10" max="90" value="40" step="5">
+    <span id="quality-val">40%</span>
+  </div>
+
+  <canvas id="capture-canvas"></canvas>
+</div>
+
+<script>
+  // ─── Configuració ────────────────────────────────────────────────────────────
+  // Al mòbil, el servidor HTTPS corre al port 8443 per permetre accés a la càmera.
+  // El port 8000 és HTTP i és per a l'ordinador de treball.
+  const SERVER_BASE = window.location.origin.replace(':8000', ':8443');
+  const FRAME_ENDPOINT = `${SERVER_BASE}/api/camera-frame`;
+
+  let stream = null;
+  let streaming = false;
+  let timerId = null;
+  let torchEnabled = false;
+  let frameCount = 0;
+  let lastFpsTime = performance.now();
+
+  const video   = document.getElementById('video');
+  const canvas  = document.getElementById('capture-canvas');
+  const ctx     = canvas.getContext('2d');
+  const btnStart = document.getElementById('btn-start');
+  const btnStop  = document.getElementById('btn-stop');
+  const btnTorch = document.getElementById('btn-torch');
+  const statusDot  = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const connLabel  = document.getElementById('conn-label');
+  const fpsLabel   = document.getElementById('fps-label');
+  const qualitySlider = document.getElementById('quality-slider');
+  const qualityVal    = document.getElementById('quality-val');
+
+  qualitySlider.addEventListener('input', () => {
+    qualityVal.textContent = qualitySlider.value + '%';
+  });
+
+  // ─── Inici de la transmissió ─────────────────────────────────────────────────
+  btnStart.addEventListener('click', async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+    } catch (e) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      } catch (e2) {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+    }
+
+    video.srcObject = stream;
+    await video.play();
+
+    // Detecta llanterna
+    checkTorch();
+
+    streaming = true;
+    btnStart.style.display = 'none';
+    btnStop.style.display  = '';
+    statusDot.className = 'active';
+    connLabel.textContent = 'Transmetent';
+    statusText.textContent = 'Transmetent a l\'ordinador…';
+
+    scheduleFrame();
+  });
+
+  btnStop.addEventListener('click', stopStream);
+
+  function stopStream() {
+    streaming = false;
+    if (timerId) clearTimeout(timerId);
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.srcObject = null;
+
+    btnStart.style.display = '';
+    btnStop.style.display  = 'none';
+    btnTorch.style.display = 'none';
+    statusDot.className = 'error';
+    connLabel.textContent = 'Aturat';
+    statusText.textContent = 'Transmissió aturada.';
+    fpsLabel.textContent = '-- fps';
+  }
+
+  // ─── Bucle de captura i enviament ────────────────────────────────────────────
+  function scheduleFrame() {
+    if (!streaming) return;
+    captureAndSend().finally(() => {
+      if (streaming) {
+        const delay = Math.max(50, 1000 / getTargetFps());
+        timerId = setTimeout(scheduleFrame, delay);
+      }
+    });
+  }
+
+  function getTargetFps() {
+    // A alta qualitat reduïm fps per evitar saturar la xarxa WiFi
+    const q = parseInt(qualitySlider.value);
+    return q > 60 ? 5 : q > 40 ? 8 : 12;
+  }
+
+  async function captureAndSend() {
+    if (video.readyState < 2) return;
+
+    // Escalem el canvas al vídeo
+    const vw = video.videoWidth  || 640;
+    const vh = video.videoHeight || 480;
+
+    // Reduïm la mida per WiFi: màx 800px d'ample
+    const scale = Math.min(1, 800 / vw);
+    canvas.width  = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const quality = parseInt(qualitySlider.value) / 100;
+
+    return new Promise(resolve => {
+      canvas.toBlob(async (blob) => {
+        if (!blob) return resolve();
+        try {
+          const res = await fetch(FRAME_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'image/jpeg', 'Content-Length': blob.size },
+            body: blob
+          });
+
+          if (res.ok) {
+            frameCount++;
+            updateFps();
+            statusDot.className = 'active';
+            connLabel.textContent = 'Transmetent';
+          } else {
+            statusDot.className = 'error';
+            connLabel.textContent = 'Error servidor';
+          }
+        } catch (err) {
+          statusDot.className = 'error';
+          connLabel.textContent = 'Sense connexió';
+          statusText.textContent = 'Error de xarxa: ' + err.message;
+        }
+        resolve();
+      }, 'image/jpeg', quality);
+    });
+  }
+
+  function updateFps() {
+    const now = performance.now();
+    const elapsed = (now - lastFpsTime) / 1000;
+    if (elapsed >= 1) {
+      fpsLabel.textContent = Math.round(frameCount / elapsed) + ' fps';
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+  }
+
+  // ─── Llanterna ───────────────────────────────────────────────────────────────
+  function checkTorch() {
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const caps = track.getCapabilities();
+      if (caps.torch) {
+        btnTorch.style.display = '';
+      }
+    } catch(e) {}
+  }
+
+  btnTorch.addEventListener('click', async () => {
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+    torchEnabled = !torchEnabled;
+    await track.applyConstraints({ advanced: [{ torch: torchEnabled }] });
+    btnTorch.textContent = torchEnabled ? '🔦 ON' : '🔦';
+    btnTorch.style.color = torchEnabled ? '#2ecc71' : '#f1c40f';
+  });
+</script>
+</body>
+</html>
