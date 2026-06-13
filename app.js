@@ -1,25 +1,42 @@
 // --- RESOLUCIÓ D'URL DEL SERVIDOR LOCAL ---
 // Detectem la URL base del servidor Python de forma automàtica.
-// L'ordinador usa HTTP port 8000 (sense SSL, localhost és segur).
-// El mòbil usa HTTPS port 8443 (necessari per a la càmera).
+// Si estem en localtunnel o un túnel d'Internet, respectem l'origen del túnel.
+// Si estem en xarxa local (localhost / IPs), normalitzem els ports.
+function isLocalHostOrIp() {
+  const hostname = window.location.hostname;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.')
+  );
+}
+
 function getBaseUrl() {
   const proto = window.location.protocol;
   if (proto === 'http:' || proto === 'https:') {
+    if (isLocalHostOrIp()) {
+      const url = new URL(window.location.href);
+      url.port = '8080';
+      url.protocol = 'http:';
+      return url.origin;
+    }
     return window.location.origin;
   }
   return 'http://localhost:8080';
 }
 
-// Per als endpoints de relay de càmera, sempre usem HTTP 8080 (el servidor
-// comparteix frames entre els dos ports internament via la variable global).
 function getRelayBase() {
   const proto = window.location.protocol;
   if (proto === 'http:' || proto === 'https:') {
-    // Normalitzem al port 8080 (HTTP) independentment del port actual
-    const url = new URL(window.location.href);
-    url.port = '8080';
-    url.protocol = 'http:';
-    return url.origin;
+    if (isLocalHostOrIp()) {
+      const url = new URL(window.location.href);
+      url.port = '8080';
+      url.protocol = 'http:';
+      return url.origin;
+    }
+    return window.location.origin;
   }
   return 'http://localhost:8080';
 }
