@@ -845,46 +845,101 @@ document.addEventListener('DOMContentLoaded', () => {
     debugImagesContainer.style.display = e.target.checked ? 'flex' : 'none';
   });
 
+  // Helper per descarregar fitxers grans mostrant el progrés a la interfície
+  async function fetchWithProgress(url, label, statusElement) {
+    statusElement.innerHTML = `⚙️ Connectant per descarregar ${label}...`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Error ${response.status} descarregant ${label} des de: ${url}`);
+    }
+    
+    const contentLength = response.headers.get('content-length');
+    const total = contentLength ? parseInt(contentLength, 10) : 0;
+    
+    if (total === 0) {
+      statusElement.innerHTML = `⚙️ Descarregant ${label} (mida desconeguda)...`;
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    }
+    
+    const reader = response.body.getReader();
+    let loaded = 0;
+    const chunks = [];
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      const pct = Math.round((loaded / total) * 100);
+      statusElement.innerHTML = `⚙️ Descarregant ${label}: <strong>${pct}%</strong> (${(loaded / 1024 / 1024).toFixed(1)}MB de ${(total / 1024 / 1024).toFixed(1)}MB)...`;
+    }
+    
+    const blob = new Blob(chunks);
+    return URL.createObjectURL(blob);
+  }
+
   // Lazy-inicialitzador de PaddleOCR per a ordinador
   let ocrInstance = null;
   async function getOcrInstance() {
     if (ocrInstance) return ocrInstance;
-    status.innerHTML = `⚙️ Descarregant models de xarxa neuronal de PaddleOCR (~20MB). Un moment, si us plau...`;
+    console.log("[PaddleOCR] getOcrInstance iniciat a l'ordinador.");
+    status.innerHTML = `⚙️ Inicialitzant: Carregant llibreria PaddleOCR...`;
     
-    const module = await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.3.2/+esm');
-    const PaddleOCR = module.PaddleOCR;
+    try {
+      console.log("[PaddleOCR] Important la llibreria @paddleocr/paddleocr-js...");
+      const module = await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.3.2/+esm');
+      const PaddleOCR = module.PaddleOCR;
+      console.log("[PaddleOCR] Llibreria importada correctament.");
 
-    // Resoldre les adreces dels models des del servidor propi o repositori CDN
-    const isLocalFile = window.location.protocol === 'file:';
-    let detUrl = '';
-    let recUrl = '';
+      // Resoldre les adreces dels models des del servidor propi o repositori CDN
+      const isLocalFile = window.location.protocol === 'file:';
+      let detUrl = '';
+      let recUrl = '';
 
-    if (!isLocalFile) {
-      detUrl = new URL('./models/PP-OCRv5_mobile_det_onnx.tar', window.location.href).href;
-      recUrl = new URL('./models/PP-OCRv5_mobile_rec_onnx.tar', window.location.href).href;
-    } else {
-      // Si estem en file://, demanem els fitxers al CDN del repositori de GitHub
-      detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar';
-      recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar';
-    }
-
-    ocrInstance = await PaddleOCR.create({
-      lang: 'en', // L'idioma English reconeix tots els caràcters llatins (català, castellà, etc.)
-      ocrVersion: 'PP-OCRv5',
-      worker: false,
-      ensureServedFromHttp: () => {},
-      text_detection_model_name: 'PP-OCRv5_mobile_det',
-      text_detection_model_dir: { url: detUrl },
-      text_recognition_model_name: 'PP-OCRv5_mobile_rec',
-      text_recognition_model_dir: { url: recUrl },
-      ortOptions: {
-        backend: 'wasm',
-        wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/',
-        numThreads: 4, // 4 fils a l'ordinador per a màxima velocitat
-        simd: true
+      if (!isLocalFile) {
+        detUrl = new URL('./models/PP-OCRv5_mobile_det_onnx.tar', window.location.href).href;
+        recUrl = new URL('./models/PP-OCRv5_mobile_rec_onnx.tar', window.location.href).href;
+      } else {
+        // Si estem en file://, demanem els fitxers al CDN del repositori de GitHub
+        detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar';
+        recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar';
       }
-    });
-    return ocrInstance;
+      
+      console.log("[PaddleOCR] Rutes resoltes a l'ordinador:", { detUrl, recUrl });
+
+      // Descarreguem ambdós fitxers mostrant el progrés a la interfície
+      console.log("[PaddleOCR] Descarregant model de detecció...");
+      const localDetObjectUrl = await fetchWithProgress(detUrl, 'model de detecció (4.8MB)', status);
+      console.log("[PaddleOCR] Descarregant model de reconeixement...");
+      const localRecObjectUrl = await fetchWithProgress(recUrl, 'model de reconeixement (16.7MB)', status);
+
+      status.innerHTML = `⚙️ Inicialitzant el motor de xarxa neuronal...`;
+      console.log("[PaddleOCR] Cridant PaddleOCR.create()...");
+
+      ocrInstance = await PaddleOCR.create({
+        lang: 'en', // L'idioma English reconeix tots els caràcters llatins (català, castellà, etc.)
+        ocrVersion: 'PP-OCRv5',
+        worker: false,
+        ensureServedFromHttp: () => {},
+        text_detection_model_name: 'PP-OCRv5_mobile_det',
+        text_detection_model_dir: { url: localDetObjectUrl },
+        text_recognition_model_name: 'PP-OCRv5_mobile_rec',
+        text_recognition_model_dir: { url: localRecObjectUrl },
+        ortOptions: {
+          backend: 'wasm',
+          wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/',
+          numThreads: 4, // 4 fils a l'ordinador per a màxima velocitat
+          simd: true
+        }
+      });
+      console.log("[PaddleOCR] ocrInstance inicialitzat correctament a l'ordinador.");
+      return ocrInstance;
+    } catch (err) {
+      console.error("[PaddleOCR] Error en getOcrInstance (ordinador):", err);
+      status.innerHTML = `<span style="color: #e74c3c">❌ Error inicialització: ${err.message}</span>`;
+      throw err;
+    }
   }
 
   fileInput.addEventListener('change', handleFile);
