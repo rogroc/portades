@@ -854,11 +854,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const module = await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.3.2/+esm');
     const PaddleOCR = module.PaddleOCR;
 
+    // Resoldre les adreces dels models des del servidor propi o repositori CDN
+    const isLocalFile = window.location.protocol === 'file:';
+    let detUrl = 'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_det_onnx.tar';
+    let recUrl = 'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_rec_onnx.tar';
+
+    if (!isLocalFile) {
+      const pagePath = window.location.pathname;
+      const pageDir = pagePath.substring(0, pagePath.lastIndexOf('/'));
+      detUrl = `${window.location.origin}${pageDir}/models/PP-OCRv5_mobile_det_onnx.tar`;
+      recUrl = `${window.location.origin}${pageDir}/models/PP-OCRv5_mobile_rec_onnx.tar`;
+    } else {
+      // Si estem en file://, demanem els fitxers al CDN del repositori de GitHub
+      detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar';
+      recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar';
+    }
+
     ocrInstance = await PaddleOCR.create({
       lang: 'en', // L'idioma English reconeix tots els caràcters llatins (català, castellà, etc.)
       ocrVersion: 'PP-OCRv5',
       worker: false,
       ensureServedFromHttp: () => {},
+      text_detection_model_name: 'PP-OCRv5_mobile_det',
+      text_detection_model_dir: { url: detUrl },
+      text_recognition_model_name: 'PP-OCRv5_mobile_rec',
+      text_recognition_model_dir: { url: recUrl },
       ortOptions: {
         backend: 'wasm',
         wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/',
