@@ -93,6 +93,20 @@ window._biblio = {
   const relayBadge      = document.getElementById('relay-badge');
   const relayStatusText = document.getElementById('relay-status-text');
   const btnRelayOcr     = document.getElementById('btn-relay-ocr');
+  const relayOpenMobile = document.getElementById('relay-open-mobile');
+
+  // Configurem l'enllaç al mòbil de forma dinàmica segons la ruta actual
+  if (relayOpenMobile) {
+    let path = window.location.pathname;
+    // Extraiem el directori de la URL eliminant el fitxer del final si hi és (ex: index.html)
+    const lastSlash = path.lastIndexOf('/');
+    if (lastSlash !== -1) {
+      path = path.substring(0, lastSlash + 1);
+    } else {
+      path = '/';
+    }
+    relayOpenMobile.href = path + 'camera_mobile/';
+  }
 
   if (!relayImg) return; // pàgina sense el panel de relay (ex: mòbil)
 
