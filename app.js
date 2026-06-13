@@ -238,7 +238,7 @@ function preprocessImage(file) {
       let width = img.width * SCALE_FACTOR;
       let height = img.height * SCALE_FACTOR;
       
-      const MAX_WIDTH = 2400;
+      const MAX_WIDTH = 1000;
       if (width > MAX_WIDTH) {
         height = Math.round(height * (MAX_WIDTH / width));
         width = MAX_WIDTH;
@@ -647,22 +647,31 @@ document.addEventListener('DOMContentLoaded', () => {
       debugNormal.src = normalUrl;
       debugInverted.src = invertedUrl;
       
-      const worker = await Tesseract.createWorker('spa+cat');
+      let currentPass = 1;
+      const worker = await Tesseract.createWorker('spa+cat', 1, {
+        logger: m => {
+          if (m && m.status === 'recognizing text') {
+            status.innerText = `🔍 Reconeixent text (Passada ${currentPass} de 4): ${Math.round(m.progress * 100)}%`;
+          } else if (m && m.status) {
+            status.innerText = `⚙️ Tesseract: ${m.status}...`;
+          }
+        }
+      });
       
       // Passada 1: Imatge Normal Adaptativa
-      status.innerText = '🔍 Reconeixent text fosc adaptatiu (Passada 1 de 4)...';
+      currentPass = 1;
       const { data: ocrResultNormal } = await worker.recognize(normalUrl);
       
       // Passada 2: Imatge Invertida Adaptativa
-      status.innerText = '🔍 Reconeixent text clar adaptatiu (Passada 2 de 4)...';
+      currentPass = 2;
       const { data: ocrResultInverted } = await worker.recognize(invertedUrl);
 
       // Passada 3: Imatge Normal Estirada
-      status.innerText = '🔍 Reconeixent colors cromàtics fosc (Passada 3 de 4)...';
+      currentPass = 3;
       const { data: ocrResultNormalStr } = await worker.recognize(normalUrlStretched);
 
       // Passada 4: Imatge Invertida Estirada
-      status.innerText = '🔍 Reconeixent colors cromàtics clar (Passada 4 de 4)...';
+      currentPass = 4;
       const { data: ocrResultInvertedStr } = await worker.recognize(invertedUrlStretched);
       
       await worker.terminate();
