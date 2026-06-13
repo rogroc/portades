@@ -123,6 +123,10 @@ window._biblio = {
       path = '/';
     }
     relayOpenMobile.href = path + 'camera_mobile/';
+    const relayOpenMobilePaddle = document.getElementById('relay-open-mobile-paddle');
+    if (relayOpenMobilePaddle) {
+      relayOpenMobilePaddle.href = path + 'camera_mobile/index_paddle.html';
+    }
   }
 
   if (!relayImg) return; // pàgina sense el panel de relay (ex: mòbil)
@@ -615,6 +619,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (relayOpenMobile) {
       relayOpenMobile.href = mobileUrl;
+    }
+    const relayOpenMobilePaddle = document.getElementById('relay-open-mobile-paddle');
+    if (relayOpenMobilePaddle) {
+      relayOpenMobilePaddle.href = `${window.location.origin}${path}camera_mobile/index_paddle.html?session=${sessionID}`;
     }
   }
 
