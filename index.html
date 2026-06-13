@@ -249,7 +249,7 @@
         <div id="relay-placeholder" style="text-align: center; width: 100%;">
           <div style="font-weight: bold; margin-bottom: 8px; color: #2c3e50;">🔗 Enllaçar mòbil:</div>
           <!-- Codi QR de connexió -->
-          <img id="session-qr" style="display: block; margin: 8px auto; border: 4px solid #fff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" width="130" height="130" alt="Codi QR de connexió">
+          <div id="session-qr-container" style="display: block; margin: 8px auto; min-height: 130px; display: flex; align-items: center; justify-content: center;"></div>
           <div style="font-size: 0.8rem; color: #555; margin-bottom: 12px;">
             Escaneja el codi QR per escanejar portades directament des del mòbil.
           </div>
@@ -337,7 +337,6 @@
     </div>
   </div>
   
-  <script src="qrcode.min.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
