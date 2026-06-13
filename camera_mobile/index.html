@@ -189,9 +189,29 @@
 
 <script>
   // ─── Configuració ────────────────────────────────────────────────────────────
+  function isLocalHostOrIp() {
+    const hostname = window.location.hostname;
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('172.')
+    );
+  }
+
+  // Si accedim localment via HTTP (port 8080), redirigim automàticament a HTTPS (port 8443)
+  // per complir el requisit del navegador que la càmera exigeix connexió segura.
+  if (window.location.protocol === 'http:' && isLocalHostOrIp()) {
+    const secureUrl = window.location.href
+      .replace('http:', 'https:')
+      .replace(':8080', ':8443');
+    window.location.href = secureUrl;
+  }
+
   // Al mòbil, el servidor HTTPS corre al port 8443 per permetre accés a la càmera.
-  // El port 8000 és HTTP i és per a l'ordinador de treball.
-  const SERVER_BASE = window.location.origin.replace(':8000', ':8443');
+  // El port 8080 és HTTP i és per a l'ordinador de treball.
+  const SERVER_BASE = window.location.origin.replace(':8080', ':8443');
   const FRAME_ENDPOINT = `${SERVER_BASE}/api/camera-frame`;
 
   let stream = null;
@@ -220,32 +240,42 @@
 
   // ─── Inici de la transmissió ─────────────────────────────────────────────────
   btnStart.addEventListener('click', async () => {
+    statusText.style.color = '#fff';
+    statusText.textContent = 'Sol·licitant accés a la càmera...';
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-    } catch (e) {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      } catch (e2) {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+      } catch (e) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        } catch (e2) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
       }
+
+      video.srcObject = stream;
+      await video.play();
+
+      // Detecta llanterna
+      checkTorch();
+
+      streaming = true;
+      btnStart.style.display = 'none';
+      btnStop.style.display  = '';
+      statusDot.className = 'active';
+      connLabel.textContent = 'Transmetent';
+      statusText.textContent = 'Transmetent a l\'ordinador…';
+
+      scheduleFrame();
+    } catch (err) {
+      console.error("Error inicialitzant càmera:", err);
+      statusDot.className = 'error';
+      connLabel.textContent = 'Error';
+      statusText.style.color = '#e74c3c';
+      statusText.textContent = `Error càmera: ${err.name} - ${err.message}. Verifica que estàs en un entorn HTTPS segur.`;
     }
-
-    video.srcObject = stream;
-    await video.play();
-
-    // Detecta llanterna
-    checkTorch();
-
-    streaming = true;
-    btnStart.style.display = 'none';
-    btnStop.style.display  = '';
-    statusDot.className = 'active';
-    connLabel.textContent = 'Transmetent';
-    statusText.textContent = 'Transmetent a l\'ordinador…';
-
-    scheduleFrame();
   });
 
   btnStop.addEventListener('click', stopStream);
