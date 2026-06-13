@@ -234,11 +234,11 @@ function preprocessImage(file) {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
-      const SCALE_FACTOR = 2.0;
+      const SCALE_FACTOR = 1.0;
       let width = img.width * SCALE_FACTOR;
       let height = img.height * SCALE_FACTOR;
       
-      const MAX_WIDTH = 1000;
+      const MAX_WIDTH = 640;
       if (width > MAX_WIDTH) {
         height = Math.round(height * (MAX_WIDTH / width));
         width = MAX_WIDTH;
