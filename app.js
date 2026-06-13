@@ -1029,11 +1029,14 @@ document.addEventListener('DOMContentLoaded', () => {
        }
  
        statusTarget.innerText = '✅ Analitzant les probabilitats...';
-       
-       if (data.numFound === 0 || data.docs.length === 0) {
-         bookResults.innerHTML = '<p>No s\'ha trobat cap llibre a nivell mundial que tingui aquestes paraules.</p>';
-         return;
-       }
+              if (data.numFound === 0 || data.docs.length === 0) {
+          bookResults.innerHTML = '<p>No s\'ha trobat cap llibre a nivell mundial que tingui aquestes paraules.</p>';
+          statusTarget.innerText = '❌ Cerca finalitzada sense resultats.';
+          if (typeof relayStatusText !== 'undefined' && relayStatusText) {
+            relayStatusText.innerHTML = `<span style="color: #e74c3c;">❌ Cap llibre trobat als catàlegs.</span>`;
+          }
+          return;
+        }
  
        // Reordenar localment basat en Token Overlap
        allScoredBooks = data.docs.map(book => {
@@ -1126,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                book.matchScore = calculateOverlapScore(book, text);
                return book;
              });
- 
+
              allScoredBooks = [...allScoredBooks, ...scoredBne];
              window._biblio.allScoredBooks = allScoredBooks;
              if (scoredBne.length > 0) {
@@ -1137,10 +1140,10 @@ document.addEventListener('DOMContentLoaded', () => {
            console.warn("Error consultant la BNE:", e);
          }
        }
- 
+
        // Pintem
        renderBookList();
- 
+
        // Publiquem el llibre guanyador a ntfy.sh i sync local
        let filtered = allScoredBooks.filter(book => book.matchScore >= currentThreshold);
        filtered.sort((a, b) => b.matchScore - a.matchScore);
@@ -1157,12 +1160,16 @@ document.addEventListener('DOMContentLoaded', () => {
            score: Math.round(winner.matchScore * 100),
            isFinalBook: true
          };
- 
+
+         if (relayStatusText) {
+           relayStatusText.innerHTML = `✅ Trobat: <strong style="color: #2ecc71;">${winner.title}</strong> (${Math.round(winner.matchScore * 100)}% coinc.)`;
+         }
+
          fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
            method: 'POST',
            body: JSON.stringify(payload)
          }).catch(e => {});
- 
+
          fetch(`${getRelayBase()}/api/sync-poll`, {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
@@ -1176,6 +1183,11 @@ document.addEventListener('DOMContentLoaded', () => {
              subjects: payload.subjects
            })
          }).catch(e => {});
+       } else {
+         statusTarget.innerText = '❌ Cap llibre supera el llindar d\'èxit.';
+         if (relayStatusText) {
+           relayStatusText.innerHTML = `<span style="color: #e74c3c;">❌ Cap llibre coincideix amb prou qualitat.</span>`;
+         }
        }
      } catch (err) {
        console.error(err);
