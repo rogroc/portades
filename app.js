@@ -46,30 +46,47 @@ function getBneApiUrl(keywords) {
 }
 
 window.syncSelectedBook = function(bookData) {
-  fetch(`${getBaseUrl()}/api/sync`, {
+  const sessionID = localStorage.getItem('biblioscan_session_id');
+  const payload = {
+    title: bookData.title,
+    authors: bookData.author_name ? bookData.author_name.join(', ') : (bookData.authors || 'Desconegut'),
+    publisher: bookData.publisher ? bookData.publisher[0] : 'Desconegut',
+    publishYear: bookData.first_publish_year || '',
+    isbn: bookData.isbn ? bookData.isbn[0] : '',
+    place: bookData.publish_place ? bookData.publish_place[0] : '',
+    subjects: bookData.subject ? bookData.subject.slice(0, 3).join(', ') : '',
+    score: bookData.score ? Math.round(bookData.score * 100) : 100
+  };
+
+  // 1. Enviem a ntfy.sh per al bookmarklet (CORS-safelisted text/plain)
+  const ntfyPromise = sessionID
+    ? fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      }).catch(e => console.error("Error enviant a ntfy.sh:", e))
+    : Promise.resolve();
+
+  // 2. Enviem al backend Python local si existeix
+  const localPromise = fetch(`${getBaseUrl()}/api/sync`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(bookData)
-  })
-  .then(res => {
-    if (res.ok) {
-      const btn = document.getElementById('sync-desktop-btn');
-      if (btn) {
-        btn.innerHTML = '✅ Enviat correctament!';
-        btn.style.background = '#27ae60';
-        setTimeout(() => {
-          btn.innerHTML = '📥 Enviar a l\'ordinador de treball';
-          btn.style.background = btn.dataset.origColor || '#8cc63f';
-        }, 3000);
-      }
-    } else {
-      alert("Error en enviar: " + res.statusText);
+  }).catch(e => console.log("Servidor local no disponible, ignorat."));
+
+  // Mostrem feedback visual d'èxit
+  Promise.all([ntfyPromise, localPromise]).then(() => {
+    const btn = document.getElementById('sync-desktop-btn');
+    if (btn) {
+      btn.innerHTML = '✅ Enviat correctament!';
+      btn.style.background = '#27ae60';
+      setTimeout(() => {
+        btn.innerHTML = '📥 Enviar a l\'ordinador de treball';
+        btn.style.background = btn.dataset.origColor || '#8cc63f';
+      }, 3000);
     }
-  })
-  .catch(err => {
-    alert("Error de connexió: " + err.message);
   });
 };
 
@@ -598,21 +615,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Connexió SSE cap a ntfy.sh per a rebre llibres directament des del mòbil
   const eventSource = new EventSource(`https://ntfy.sh/biblioscan-sync-${sessionID}/sse`);
+  
+  eventSource.onopen = () => {
+    console.log(`📡 Connexió SSE oberta correctament amb ntfy.sh per al canal: biblioscan-sync-${sessionID}`);
+  };
+
+  eventSource.onerror = (e) => {
+    console.error("❌ Error o desconnexió SSE amb ntfy.sh:", e);
+  };
+
   eventSource.onmessage = (event) => {
+    console.log("📥 Nou missatge rebut de ntfy.sh (dades brutes):", event.data);
     try {
       const msg = JSON.parse(event.data);
       if (msg && msg.message) {
+        console.log("📥 Contingut del missatge (msg.message):", msg.message);
         const payload = JSON.parse(msg.message);
+        console.log("📥 Payload descodificat:", payload);
         if (payload) {
           if (payload.title) {
+            console.log("📖 Llibre trobat correctament, processant...");
             handleSyncedBook(payload);
           } else if (payload.error) {
+            console.log("⚠️ Avís/Error rebut des del mòbil, processant...");
             handleSyncedError(payload);
           }
         }
       }
     } catch (e) {
-      // Ignorem missatges no JSON
+      console.warn("⚠️ Error en processar/descodificar el missatge SSE de ntfy.sh (pot no ser JSON):", e);
     }
   };
 

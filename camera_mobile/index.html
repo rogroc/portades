@@ -500,14 +500,16 @@
   // ─── Captura, OCR i Cerca Local (Mode Estàtic) ───────────────────────────────
   async function sendSyncStatus(payload) {
     if (!isStaticSync) return;
+    console.log("📡 Mòbil intentant enviar estat d'error a ntfy.sh:", payload);
     try {
-      await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
+      const pubRes = await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
+      console.log(`📡 Resposta de ntfy.sh (enviament estat d'error): Status ${pubRes.status}`);
     } catch (e) {
-      console.error("Error enviant estat a l'ordinador:", e);
+      console.error("❌ Error de xarxa al mòbil enviant estat a ntfy.sh:", e);
     }
   }
 
@@ -687,11 +689,13 @@
         score: Math.round(maxScore * 100)
       };
       
+      console.log("📡 Mòbil intentant enviar llibre a ntfy.sh:", payload);
       const pubRes = await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
+      console.log(`📡 Resposta de ntfy.sh (enviament llibre): Status ${pubRes.status}`);
       
       if (pubRes.ok) {
         statusText.style.color = '#2ecc71';
