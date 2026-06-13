@@ -178,16 +178,18 @@ window._biblio = {
     }
   }
 
-  // Comprovem l'estat de la connexió cada 2.5s per detectar desconnexions
-  setInterval(async () => {
-    try {
-      const res = await fetch(`${getRelayBase()}/api/camera-status`);
-      if (res.ok) {
-        const data = await res.json();
-        if (!data.active) setInactive();
-      }
-    } catch(e) {}
-  }, 2500);
+  // Comprovem l'estat de la connexió cada 2.5s per detectar desconnexions (només en local)
+  if (isLocalHostOrIp()) {
+    setInterval(async () => {
+      try {
+        const res = await fetch(`${getRelayBase()}/api/camera-status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!data.active) setInactive();
+        }
+      } catch(e) {}
+    }, 2500);
+  }
 
   // Botó OCR: captura el frame actual i el processa
   btnRelayOcr.addEventListener('click', async () => {
