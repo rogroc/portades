@@ -1139,8 +1139,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Calculem la millor nota obtinguda a Open Library per decidir si cal recórrer a la BNE (si és < 99%)
       const maxOLScore = allScoredBooks.length > 0 ? Math.max(...allScoredBooks.map(b => b.matchScore)) : 0;
 
-      // Fallback a la BNE si no hi ha coincidència gairebé perfecta (>= 99%)
-      if (maxOLScore < 0.99) {
+      // Fallback a la BNE si no hi ha coincidència gairebé perfecta (>= 99%) i no som a GitHub Pages (allotjament estàtic)
+      const isStaticGitHubPages = window.location.hostname.endsWith('github.io');
+      if (maxOLScore < 0.99 && !isStaticGitHubPages) {
         status.innerText = '🌐 Coincidència Open Library parcial o inexistent. Consultant la BNE...';
         try {
           const bneQuery = apiKeywords.join(' ');
