@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cerca per Portada - Open Library</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+      background-color: #f4f7f6; 
+      color: #333; 
+      margin: 0; 
+      padding: 20px; 
+    }
+    .container { 
+      max-width: 800px; 
+      margin: 0 auto; 
+      background: white; 
+      padding: 20px; 
+      border-radius: 12px; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+    }
+    h1 { 
+      font-size: 1.5rem; 
+      text-align: center; 
+      color: #2c3e50; 
+    }
+    .upload-area { 
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed #3498db; 
+      padding: 40px 20px; 
+      text-align: center; 
+      border-radius: 8px; 
+      margin-bottom: 20px; 
+      cursor: pointer; 
+      background: #ebf5fb; 
+    }
+    .upload-area:hover { 
+      background: #d6eaf8; 
+    }
+    input[type="file"] { 
+      display: none; 
+    }
+    .btn { 
+      display: inline-block; 
+      background: #3498db; 
+      color: white; 
+      padding: 10px 20px; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-weight: bold; 
+      border: none; 
+    }
+    .btn:hover { 
+      background: #2980b9; 
+    }
+    img#preview { 
+      max-width: 100%; 
+      max-height: 400px; 
+      display: block; 
+      margin: 10px auto; 
+      border-radius: 8px; 
+    }
+    .section { 
+      background: #fdfefe; 
+      border: 1px solid #e5e8e8; 
+      padding: 15px; 
+      margin-bottom: 15px; 
+      border-radius: 8px; 
+    }
+    .section h3 { 
+      margin-top: 0; 
+      color: #16a085; 
+      font-size: 1.1rem; 
+    }
+    pre { 
+      background: #2c3e50; 
+      color: #ecf0f1; 
+      padding: 15px; 
+      border-radius: 6px; 
+      overflow-x: auto; 
+      font-size: 0.9rem; 
+      white-space: pre-wrap; 
+    }
+    .status { 
+      font-weight: bold; 
+      color: #e67e22; 
+      margin: 10px 0; 
+      text-align: center; 
+    }
+    .book-result { 
+      display: flex; 
+      gap: 15px; 
+      border-bottom: 1px solid #eee; 
+      padding-bottom: 15px; 
+      margin-bottom: 15px; 
+    }
+    .book-result img { 
+      width: 80px; 
+      height: 120px; 
+      object-fit: cover; 
+      border-radius: 4px; 
+    }
+    .book-info h4 { 
+      margin: 0 0 5px 0; 
+    }
+    .book-info p { 
+      margin: 0; 
+      color: #555; 
+      font-size: 0.9rem; 
+    }
+    .badge { 
+      background: #27ae60; 
+      color: white; 
+      padding: 3px 8px; 
+      border-radius: 12px; 
+      font-size: 0.8rem; 
+      font-weight: bold; 
+    }
+    .badge.or { 
+      background: #f39c12; 
+    }
+
+    /* ── Camera Relay ── */
+    #camera-relay-panel {
+      border: 2px solid #27ae60;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      background: #0d0d0d;
+    }
+    #camera-relay-header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+    #camera-relay-live {
+      position: relative;
+      max-height: 420px;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #relay-img {
+      width: 100%;
+      max-height: 420px;
+      object-fit: contain;
+      display: block;
+    }
+    #relay-placeholder {
+      color: #555;
+      text-align: center;
+      padding: 60px 20px;
+      font-size: 0.9rem;
+      line-height: 1.7;
+    }
+    #relay-badge {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(231,76,60,0.9);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.05em;
+      display: none;
+    }
+    #relay-badge.live {
+      display: block;
+      background: rgba(39,174,96,0.92);
+      animation: livepulse 1.5s infinite;
+    }
+    @keyframes livepulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    #camera-relay-footer {
+      background: #1a1a2e;
+      padding: 10px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #btn-relay-ocr {
+      background: #27ae60;
+      color: #fff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    #btn-relay-ocr:hover { background: #219a52; }
+    #btn-relay-ocr:disabled { background: #555; cursor: not-allowed; }
+    #relay-status-text {
+      color: #aaa;
+      font-size: 0.78rem;
+      flex: 1;
+    }
+    #relay-open-mobile {
+      color: #3498db;
+      font-size: 0.78rem;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    #relay-open-mobile:hover { text-decoration: underline; }
+  </style>
+  <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js" defer></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Cerca Experimental per Portada 📚</h1>
+    <p style="text-align: center; font-size: 0.9rem;">Algorisme d'extracció d'OCR + Cerca Fuzzy a Open Library</p>
+    
+    <!-- Secció de Sincronització amb Ordinador -->
+    <div style="background: #ebf5fb; border: 1px solid #aed6f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;">
+      <h3 style="margin: 0 0 8px 0; color: #2980b9;">💻 Sincronització amb l'ordinador de treball</h3>
+      <p style="margin: 0 0 10px 0; color: #555;">Si estàs usant el mòbil per escanejar, pots sincronitzar els resultats directament amb el formulari de la base de dades del teu ordinador.</p>
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <span style="font-weight: bold; color: #34495e;">Pas 1:</span>
+        <a id="bookmarklet-link" href="#" style="background: #3498db; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 0.85rem;" onclick="alert('Arrossega aquest botó a la barra de marcadors del teu navegador de l\'ordinador.'); return false;">
+          🚀 Enviar a Formulari
+        </a>
+        <span style="color: #7f8c8d; font-size: 0.8rem;">(Arrossega aquest botó a la barra de marcadors del teu ordinador)</span>
+      </div>
+      <p style="margin: 10px 0 0 0; font-size: 0.8rem; color: #7f8c8d;"><strong>Pas 2:</strong> Al teu ordinador, obre la pàgina del teu formulari, clica sobre el marcador guardat per iniciar la sincronització en segon pla.</p>
+    </div>
+
+    <!-- Càmera Mòbil en Directe (relay) -->
+    <div id="camera-relay-panel">
+      <div id="camera-relay-header">
+        <span>📡 Càmera Mòbil en Directe</span>
+        <a id="relay-open-mobile" href="/camera_mobile/" target="_blank">Obrir pàgina mòbil ↗</a>
+      </div>
+      <div id="camera-relay-live">
+        <div id="relay-placeholder">
+          📱 Obre la <strong>pàgina mòbil</strong> al teu telèfon<br>
+          i prem <strong>"Iniciar transmissió"</strong><br>
+          per veure la càmera aquí en directe.
+        </div>
+        <img id="relay-img" alt="Càmera mòbil" style="display:none;">
+        <div id="relay-badge">● EN DIRECTE</div>
+      </div>
+      <div id="camera-relay-footer">
+        <button id="btn-relay-ocr" disabled>🔍 Analitzar fotograma actual</button>
+        <span id="relay-status-text">Esperant connexió del mòbil…</span>
+      </div>
+    </div>
+    
+    <label class="upload-area" id="drop-area">
+      <input type="file" id="file-input" accept="image/*" capture="environment">
+      <div style="font-size: 2rem; margin-bottom: 10px;">📸</div>
+      <span class="btn">Fes una foto o puja la portada</span>
+    </label>
+    
+    <!-- Barra ajustable per a escollir el percentatge mínim de probabilitat -->
+    <div class="slider-container" style="background: #fff; border: 1px solid #e5e8e8; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; justify-content: space-between; flex-wrap: wrap;">
+      <label for="threshold-slider" style="font-weight: bold; color: #2c3e50; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+        📊 Percentatge de probabilitat mínim: 
+        <span id="threshold-val" style="color: #3498db; font-size: 1.1rem; font-weight: 800; background: #ebf5fb; padding: 2px 8px; border-radius: 6px;">98%</span>
+      </label>
+      <input type="range" id="threshold-slider" min="1" max="100" value="98" style="flex-grow: 1; min-width: 200px; max-width: 300px; cursor: pointer; height: 6px; border-radius: 3px; accent-color: #3498db;">
+      
+      <!-- Checkbox de depuració -->
+      <label style="font-size: 0.9rem; font-weight: bold; color: #7f8c8d; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+        <input type="checkbox" id="debug-check" style="cursor: pointer;"> 🛠️ Mostrar imatges d'OCR
+      </label>
+    </div>
+    
+    <div id="preview-container" style="display: none; position: relative; margin: 20px auto; max-width: 100%; max-height: 400px; width: fit-content; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">
+      <img id="preview" style="max-width: 100%; max-height: 400px; display: block; margin: 0 auto;">
+      <canvas id="overlay-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+    </div>
+
+    <!-- Contenidor per a les imatges de depuració (binaritzades) -->
+    <div id="debug-images-container" style="display: none; justify-content: center; gap: 20px; margin: 20px auto; flex-wrap: wrap; background: #fdfefe; border: 1px solid #e5e8e8; padding: 15px; border-radius: 8px;">
+      <div style="text-align: center;">
+        <h4 style="margin: 0 0 10px 0; color: #2c3e50; font-size: 0.9rem;">Canal Fosc (Passada 1)</h4>
+        <img id="debug-normal" style="max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid #ccc;">
+      </div>
+      <div style="text-align: center;">
+        <h4 style="margin: 0 0 10px 0; color: #2c3e50; font-size: 0.9rem;">Canal Clar (Passada 2)</h4>
+        <img id="debug-inverted" style="max-width: 100%; max-height: 250px; border-radius: 6px; border: 1px solid #ccc;">
+      </div>
+    </div>
+    <div id="status" class="status"></div>
+    
+    <div id="results-container" style="display: none;">
+      <div class="section" id="ocr-section">
+        <h3>1. Text Brut Extret (OCR)</h3>
+        <pre id="raw-ocr"></pre>
+      </div>
+      
+      <div class="section" id="clean-section">
+        <h3>2. Text Netejat i Paraules Clau</h3>
+        <pre id="clean-ocr"></pre>
+      </div>
+      
+      <div class="section" id="api-section">
+        <h3>3. Resultats de la Validació i API</h3>
+        <div id="book-results"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Finestra flotant de detalls del llibre -->
+  <div id="book-details-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; overflow-y: auto; padding: 20px; box-sizing: border-box; align-items: flex-start; justify-content: center;">
+    <div style="background: white; max-width: 600px; width: 100%; margin: 40px auto; padding: 25px; border-radius: 12px; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+      <button id="close-details" style="position: absolute; right: 15px; top: 15px; font-size: 2rem; background: none; border: none; cursor: pointer; color: #555; line-height: 1;">&times;</button>
+      <div id="details-content" style="margin-top: 10px;">
+        <div style="text-align: center; color: #3498db;">⏳ Carregant dades mestres des d'Open Library...</div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="app.js" defer></script>
+</body>
+</html>
