@@ -450,7 +450,69 @@ function preprocessImage(file) {
       invertedCtxStretched.putImageData(invertedImageDataStretched, 0, 0);
       const invertedUrlStretched = invertedCanvasStretched.toDataURL('image/jpeg', 1.0);
 
-      resolve({ previewUrl, normalUrl, invertedUrl, normalUrlStretched, invertedUrlStretched });
+      // --- Càlcul de la llegibilitat / nitidesa per a tota la imatge ---
+      let minGrayVal = 255;
+      let maxGrayVal = 0;
+      let edgeSumVal = 0;
+      let edgeCountVal = 0;
+      
+      const step = Math.max(1, Math.round(numCropPixels / 40000));
+      for (let i = 0; i < numCropPixels; i += step) {
+        const g = normalGrays[i];
+        if (g < minGrayVal) minGrayVal = g;
+        if (g > maxGrayVal) maxGrayVal = g;
+      }
+      
+      const contrastVal = maxGrayVal - minGrayVal;
+      const skip = step * 2 + 1;
+      
+      for (let y = 1; y < cropHeight - 1; y += skip) {
+        for (let x = 1; x < width - 1; x += skip) {
+          const idx = y * width + x;
+          const val = normalGrays[idx];
+          
+          const diffX = Math.abs(val - normalGrays[idx + 1]);
+          const diffY = Math.abs(val - normalGrays[idx + width]);
+          
+          if (diffX > 15 || diffY > 15) {
+            edgeSumVal += (diffX + diffY);
+            edgeCountVal++;
+          }
+        }
+      }
+      
+      const edgeDensityVal = edgeCountVal / ((width * cropHeight) / (skip * skip));
+      const avgEdgeStrengthVal = edgeCountVal > 0 ? (edgeSumVal / edgeCountVal) : 0;
+      
+      let focusScoreVal = Math.min(100, Math.round((avgEdgeStrengthVal / 50) * 100));
+      let densityScoreVal = Math.min(100, Math.round((edgeDensityVal / 0.16) * 100));
+      
+      let readabilityScore = Math.round((focusScoreVal * 0.6) + (densityScoreVal * 0.4));
+      
+      if (contrastVal < 90) {
+        readabilityScore = Math.round(readabilityScore * (contrastVal / 90));
+      }
+      
+      readabilityScore = Math.max(5, Math.min(99, readabilityScore));
+      
+      let readabilityLabel = '';
+      let readabilityColor = '';
+      
+      if (readabilityScore < 40) {
+        readabilityLabel = '⚠️ Desenfocada o amb poc text';
+        readabilityColor = '#e74c3c';
+      } else if (readabilityScore < 75) {
+        readabilityLabel = '⚡ Nitidesa mitjana';
+        readabilityColor = '#f39c12';
+      } else {
+        readabilityLabel = '✨ Nitidesa excel·lent';
+        readabilityColor = '#2ecc71';
+      }
+
+      resolve({ 
+        previewUrl, normalUrl, invertedUrl, normalUrlStretched, invertedUrlStretched,
+        readabilityScore, readabilityLabel, readabilityColor
+      });
     };
     img.onerror = reject;
     
@@ -639,13 +701,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       status.innerText = '⚙️ Inicialitzant motor OCR i aplicant filtres de visió...';
-      const { previewUrl, normalUrl, invertedUrl, normalUrlStretched, invertedUrlStretched } = await preprocessImage(file);
+      const { 
+        previewUrl, normalUrl, invertedUrl, normalUrlStretched, invertedUrlStretched,
+        readabilityScore, readabilityLabel, readabilityColor
+      } = await preprocessImage(file);
+      
       // Mostrem la imatge a color equalitzada al preview per a una millor estètica
       preview.src = previewUrl;
       
       // Assignem les imatges de depuració adaptativa
       debugNormal.src = normalUrl;
       debugInverted.src = invertedUrl;
+      
+      // Mostrem la llegibilitat de la foto abans de fer OCR
+      status.innerHTML = `⚙️ Nitidesa de la foto: <strong style="color: ${readabilityColor}">${readabilityScore}% (${readabilityLabel})</strong>.<br>Inicialitzant motor OCR i processant...`;
       
       let currentPass = 1;
       const worker = await Tesseract.createWorker('spa+cat', 1, {
