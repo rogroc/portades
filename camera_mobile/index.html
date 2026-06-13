@@ -497,7 +497,7 @@
     btnTorch.style.color = torchEnabled ? '#2ecc71' : '#f1c40f';
   });
 
-  // ─── Captura i Extracció OCR (Mode Estàtic) ───────────────────────────────
+  // ─── Captura, OCR i Cerca Local (Mode Estàtic) ───────────────────────────────
   btnScan.addEventListener('click', async () => {
     if (!streaming || !video || video.readyState < 2) return;
     
@@ -574,7 +574,7 @@
       nCtx.putImageData(nImgData, 0, 0);
       const normalUrl = normalCanvas.toDataURL('image/jpeg', 1.0);
       
-      // 3. Executem OCR localment al mòbil (worker d'un sol idioma 'cat' per estalviar memòria i CPU)
+      // 3. Executem OCR localment al mòbil (worker d'un sol idioma 'cat' per a mòbils per estalviar memòria!)
       statusText.textContent = '⚙️ Inicialitzant motor d\'OCR local...';
       const worker = await Tesseract.createWorker('cat', 1, {
         logger: m => {
@@ -589,28 +589,93 @@
       await worker.terminate();
       
       console.log("OCR completat al mòbil:", ocrText);
-      const cleanOcrText = ocrText ? ocrText.trim() : '';
-      if (cleanOcrText.length < 4) {
+      if (!ocrText || ocrText.trim().length < 4) {
         statusText.style.color = '#e74c3c';
         statusText.textContent = '⚠️ No s\'ha trobat text suficient. Prova enfocant millor.';
         return;
       }
       
-      // 4. Enviem el text brut directament a l'ordinador via PubSub
-      statusText.textContent = '📡 Enviant text a l\'ordinador de treball...';
+      // 4. Cerca a Open Library des del mòbil
+      statusText.textContent = '🌍 Buscant llibre a Open Library...';
+      const cleanQuery = ocrText.replace(/[^\w\sàéèíóòúüçñ]/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (cleanQuery.length < 4) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = '⚠️ Text detectat massa curt per cercar.';
+        return;
+      }
+      
+      const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(cleanQuery)}&limit=5`;
+      const res = await fetch(searchUrl);
+      if (!res.ok) {
+        throw new Error('Error al connectar amb Open Library');
+      }
+      
+      const searchData = await res.json();
+      if (!searchData.docs || searchData.docs.length === 0) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = '⚠️ Cap llibre trobat per aquest text.';
+        return;
+      }
+      
+      // Fuzzy overlap
+      let bestBook = null;
+      let maxScore = -1;
+      const ocrWords = new Set(ocrText.toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/));
+      
+      for (const doc of searchData.docs) {
+        const titleWords = (doc.title || '').toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
+        let titleMatches = 0;
+        for (let w of titleWords) {
+          if (ocrWords.has(w)) titleMatches++;
+        }
+        const titleScore = titleWords.length > 0 ? (titleMatches / titleWords.length) : 0;
+        
+        let authorScore = 0;
+        if (doc.author_name && doc.author_name.length > 0) {
+          const authorWords = doc.author_name[0].toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
+          let authorMatches = 0;
+          for (let w of authorWords) {
+            if (ocrWords.has(w)) authorMatches++;
+          }
+          authorScore = authorWords.length > 0 ? (authorMatches / authorWords.length) : 0;
+        }
+        
+        const score = (titleScore * 0.6) + (authorScore * 0.4);
+        if (score > maxScore) {
+          maxScore = score;
+          bestBook = doc;
+        }
+      }
+      
+      if (!bestBook || maxScore < 0.20) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = `⚠️ Coincidència massa baixa (${Math.round(maxScore * 100)}%). Prova altre cop.`;
+        return;
+      }
+      
+      // 5. Enviem el resultat a ntfy.sh
+      statusText.textContent = '📡 Sincronitzant llibre amb l\'ordinador...';
       const payload = {
-        ocrText: cleanOcrText
+        title: bestBook.title,
+        authors: bestBook.author_name ? bestBook.author_name.join(', ') : 'Desconegut',
+        publisher: bestBook.publisher ? bestBook.publisher[0] : 'Desconegut',
+        publishYear: bestBook.first_publish_year || bestBook.publish_year?.[0] || '',
+        isbn: bestBook.isbn ? bestBook.isbn[0] : '',
+        place: bestBook.publish_place ? bestBook.publish_place[0] : '',
+        subjects: bestBook.subject ? bestBook.subject.slice(0, 3).join(', ') : '',
+        score: Math.round(maxScore * 100)
       };
       
       const pubRes = await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
       if (pubRes.ok) {
         statusText.style.color = '#2ecc71';
-        statusText.textContent = `✨ OCR enviat! "${cleanOcrText.substring(0, 25)}..." s'està cercant a l'ordinador.`;
-        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+        statusText.textContent = `✨ Llibre enviat: "${payload.title}" (${payload.score}% d'èxit)!`;
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
       } else {
         throw new Error('Error de connexió PubSub.');
       }
