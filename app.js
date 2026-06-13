@@ -565,12 +565,103 @@ document.addEventListener('DOMContentLoaded', () => {
   const debugNormal = document.getElementById('debug-normal');
   const debugInverted = document.getElementById('debug-inverted');
 
-  // Sincronització Bookmarklet
+  // --- Generació i enllaç de la Sessió de Sincronització Estàtica (GitHub Pages) ---
+  let sessionID = localStorage.getItem('biblioscan_session_id');
+  if (!sessionID) {
+    sessionID = Math.random().toString(36).substring(2, 8).toUpperCase();
+    localStorage.setItem('biblioscan_session_id', sessionID);
+  }
+
+  const qrImg = document.getElementById('session-qr');
+  const relayOpenMobile = document.getElementById('relay-open-mobile');
+  const relayStatusText = document.getElementById('relay-status-text');
+
+  if (qrImg) {
+    let path = window.location.pathname;
+    const lastSlash = path.lastIndexOf('/');
+    if (lastSlash !== -1) {
+      path = path.substring(0, lastSlash + 1);
+    } else {
+      path = '/';
+    }
+    const mobileUrl = `${window.location.origin}${path}camera_mobile/?session=${sessionID}`;
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
+    
+    if (relayOpenMobile) {
+      relayOpenMobile.href = mobileUrl;
+    }
+  }
+
+  if (relayStatusText) {
+    relayStatusText.innerHTML = `Sessió: <strong>${sessionID}</strong>. Escoltant canal estàtic...`;
+  }
+
+  // Connexió SSE cap a ntfy.sh per a rebre llibres directament des del mòbil
+  const eventSource = new EventSource(`https://ntfy.sh/biblioscan-sync-${sessionID}/sse`);
+  eventSource.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg && msg.message) {
+        const payload = JSON.parse(msg.message);
+        if (payload && payload.title) {
+          handleSyncedBook(payload);
+        }
+      }
+    } catch (e) {
+      // Ignorem missatges no JSON
+    }
+  };
+
+  function handleSyncedBook(payload) {
+    if (relayStatusText) {
+      relayStatusText.innerHTML = `📥 Rebut: <strong style="color: #2ecc71;">${payload.title}</strong> (${payload.score}% coinc.)`;
+    }
+    
+    // Omplim la interfície principal
+    resultsContainer.style.display = 'block';
+    rawOcr.innerText = `[Sincronització Mòbil]\n${payload.title}\n${payload.authors}\nISBN: ${payload.isbn}`;
+    cleanOcr.innerText = `${payload.title}\n${payload.authors}`;
+    
+    const doc = {
+      title: payload.title,
+      author_name: payload.authors ? [payload.authors] : ['Desconegut'],
+      publisher: payload.publisher ? [payload.publisher] : ['Desconegut'],
+      first_publish_year: payload.publishYear,
+      isbn: payload.isbn ? [payload.isbn] : [],
+      publish_place: payload.place ? [payload.place] : [],
+      subject: payload.subjects ? payload.subjects.split(', ') : []
+    };
+    
+    allScoredBooks = [{
+      book: doc,
+      score: payload.score / 100,
+      matchedWords: []
+    }];
+    
+    window._biblio.allScoredBooks = allScoredBooks;
+    renderBookList();
+    
+    // Per si de cas l'usuari corre en local, enviem una còpia al webhook local
+    fetch(`${getRelayBase()}/api/sync-poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: payload.title,
+        authors: payload.authors,
+        publisher: payload.publisher,
+        publishYear: payload.publishYear,
+        isbn: payload.isbn,
+        place: payload.place,
+        subjects: payload.subjects
+      })
+    }).catch(e => {});
+  }
+
+  // Sincronització Bookmarklet via SSE (sense dependre del servidor local Python)
   const bookmarkletLink = document.getElementById('bookmarklet-link');
   if (bookmarkletLink) {
-    const base = getBaseUrl();
     const bookmarkletCode = `javascript:(async () => {
-      console.log("Iniciant sincronització BiblioScan...");
+      console.log("Iniciant sincronització BiblioScan estàtica...");
       let active = true;
       const statusDiv = document.createElement('div');
       statusDiv.style.position = 'fixed';
@@ -584,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
       statusDiv.style.fontFamily = 'sans-serif';
       statusDiv.style.fontSize = '12px';
       statusDiv.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
-      statusDiv.innerHTML = '🔄 Escoltant BiblioScan mòbil... <button id="stop-sync-btn" style="background:none;border:none;color:white;font-weight:bold;cursor:pointer;margin-left:10px;">[X]</button>';
+      statusDiv.innerHTML = '🔄 Escoltant canal BiblioScan (${sessionID})... <button id="stop-sync-btn" style="background:none;border:none;color:white;font-weight:bold;cursor:pointer;margin-left:10px;">[X]</button>';
       document.body.appendChild(statusDiv);
       
       document.getElementById('stop-sync-btn').onclick = () => {
@@ -593,12 +684,13 @@ document.addEventListener('DOMContentLoaded', () => {
         alert("Sincronització aturada.");
       };
 
-      async function poll() {
-        if (!active) return;
+      const eventSource = new EventSource('https://ntfy.sh/biblioscan-sync-${sessionID}/sse');
+      eventSource.onmessage = (event) => {
+        if (!active) { eventSource.close(); return; }
         try {
-          const res = await fetch('${base}/api/sync-poll');
-          if (res.ok) {
-            const data = await res.json();
+          const msg = JSON.parse(event.data);
+          if (msg && msg.message) {
+            const data = JSON.parse(msg.message);
             if (data && data.title) {
               statusDiv.style.background = '#3498db';
               statusDiv.innerHTML = '📥 Rebut: ' + data.title + '...';
@@ -640,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
               setTimeout(() => {
                 statusDiv.style.background = '#2ecc71';
-                statusDiv.innerHTML = '🔄 Escoltant BiblioScan mòbil... <button id="stop-sync-btn" style="background:none;border:none;color:white;font-weight:bold;cursor:pointer;margin-left:10px;">[X]</button>';
+                statusDiv.innerHTML = '🔄 Escoltant canal BiblioScan (${sessionID})... <button id="stop-sync-btn" style="background:none;border:none;color:white;font-weight:bold;cursor:pointer;margin-left:10px;">[X]</button>';
                 const stopBtn = document.getElementById('stop-sync-btn');
                 if (stopBtn) {
                   stopBtn.onclick = () => {
@@ -652,13 +744,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         } catch (e) {
-          console.error("Error al poll de BiblioScan:", e);
+          console.error("Error al processar missatge SSE:", e);
         }
-        if (active) setTimeout(poll, 1500);
-      }
-      poll();
+      };
     })();`;
-    bookmarkletLink.href = bookmarkletCode.replace(/\\s+/g, ' ');
+    bookmarkletLink.href = bookmarkletCode.replace(/\s+/g, ' ');
   }
 
   // Variables d'estat per a la renderització dinàmica amb la barra de probabilitat

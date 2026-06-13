@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>BiblioScan · Càmera Mòbil</title>
+  <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -124,6 +125,7 @@
     button:active { transform: scale(0.97); opacity: 0.85; }
 
     #btn-start { background: #2ecc71; color: #fff; }
+    #btn-scan  { background: #3498db; color: #fff; display: none; }
     #btn-stop  { background: #e74c3c; color: #fff; display: none; }
     #btn-torch { background: #2c3e50; color: #f1c40f; display: none; }
 
@@ -223,6 +225,7 @@
 
   <div class="btn-row">
     <button id="btn-start">📡 Iniciar transmissió</button>
+    <button id="btn-scan">📸 Escanejar portada</button>
     <button id="btn-stop">⏹ Aturar</button>
     <button id="btn-torch">🔦</button>
   </div>
@@ -258,6 +261,11 @@
     window.location.href = secureUrl;
   }
 
+  // Detectem si estem en mode de sincronització estàtica (allotjat a GitHub Pages)
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionID = urlParams.get('session');
+  const isStaticSync = !!sessionID;
+
   // Al mòbil, el servidor HTTPS corre al port 8443 per permetre accés a la càmera.
   // El port 8080 és HTTP i és per a l'ordinador de treball.
   const SERVER_BASE = window.location.origin.replace(':8080', ':8443');
@@ -274,6 +282,7 @@
   const canvas  = document.getElementById('capture-canvas');
   const ctx     = canvas.getContext('2d');
   const btnStart = document.getElementById('btn-start');
+  const btnScan  = document.getElementById('btn-scan');
   const btnStop  = document.getElementById('btn-stop');
   const btnTorch = document.getElementById('btn-torch');
   const statusDot  = document.getElementById('status-dot');
@@ -287,6 +296,15 @@
   const readabilityText      = document.getElementById('readability-text');
   const readabilityPercent   = document.getElementById('readability-percent');
   const readabilityBar       = document.getElementById('readability-bar');
+
+  // Ajustos inicials segons el mode
+  if (isStaticSync) {
+    document.getElementById('quality-row').style.display = 'none';
+    fpsLabel.style.display = 'none';
+    btnStart.textContent = '📸 Engegar Escàner';
+    connLabel.textContent = 'Sessió: ' + sessionID;
+    statusText.textContent = `Sessió estàtica detectada (${sessionID}). Prem "Engegar Escàner" per començar.`;
+  }
 
   qualitySlider.addEventListener('input', () => {
     qualityVal.textContent = qualitySlider.value + '%';
@@ -318,9 +336,17 @@
       streaming = true;
       btnStart.style.display = 'none';
       btnStop.style.display  = '';
+      
+      if (isStaticSync) {
+        btnScan.style.display = 'block';
+        connLabel.textContent = 'Enllaçat';
+        statusText.textContent = 'Enfoca la portada del llibre i prem "Escanejar portada".';
+      } else {
+        connLabel.textContent = 'Transmetent';
+        statusText.textContent = 'Transmetent a l\'ordinador…';
+      }
+      
       statusDot.className = 'active';
-      connLabel.textContent = 'Transmetent';
-      statusText.textContent = 'Transmetent a l\'ordinador…';
       if (readabilityIndicator) readabilityIndicator.style.display = 'flex';
 
       scheduleFrame();
@@ -329,7 +355,7 @@
       statusDot.className = 'error';
       connLabel.textContent = 'Error';
       statusText.style.color = '#e74c3c';
-      statusText.textContent = `Error càmera: ${err.name} - ${err.message}. Verifica que estàs en un entorn HTTPS segur.`;
+      statusText.textContent = `Error càmera: ${err.name} - ${err.message}.`;
     }
   });
 
@@ -343,10 +369,18 @@
 
     btnStart.style.display = '';
     btnStop.style.display  = 'none';
+    btnScan.style.display  = 'none';
     btnTorch.style.display = 'none';
     statusDot.className = 'error';
-    connLabel.textContent = 'Aturat';
-    statusText.textContent = 'Transmissió aturada.';
+    
+    if (isStaticSync) {
+      connLabel.textContent = 'Sessió: ' + sessionID;
+      statusText.textContent = 'Escàner aturat.';
+    } else {
+      connLabel.textContent = 'Aturat';
+      statusText.textContent = 'Transmissió aturada.';
+    }
+    
     fpsLabel.textContent = '-- fps';
     if (readabilityIndicator) readabilityIndicator.style.display = 'none';
   }
@@ -354,12 +388,28 @@
   // ─── Bucle de captura i enviament ────────────────────────────────────────────
   function scheduleFrame() {
     if (!streaming) return;
-    captureAndSend().finally(() => {
-      if (streaming) {
-        const delay = Math.max(50, 1000 / getTargetFps());
-        timerId = setTimeout(scheduleFrame, delay);
+    
+    if (isStaticSync) {
+      // Mode Estàtic: només actualitzem la barra de nitidesa localment a ~10fps
+      if (video.readyState >= 2) {
+        const vw = video.videoWidth  || 640;
+        const vh = video.videoHeight || 480;
+        const scale = Math.min(1, 450 / vw);
+        canvas.width  = Math.round(vw * scale);
+        canvas.height = Math.round(vh * scale);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        updateReadability(canvas, ctx);
       }
-    });
+      timerId = setTimeout(scheduleFrame, 100);
+    } else {
+      // Mode Relay: enviem fotogrames al backend local per xarxa WiFi
+      captureAndSend().finally(() => {
+        if (streaming) {
+          const delay = Math.max(50, 1000 / getTargetFps());
+          timerId = setTimeout(scheduleFrame, delay);
+        }
+      });
+    }
   }
 
   function getTargetFps() {
@@ -445,6 +495,199 @@
     await track.applyConstraints({ advanced: [{ torch: torchEnabled }] });
     btnTorch.textContent = torchEnabled ? '🔦 ON' : '🔦';
     btnTorch.style.color = torchEnabled ? '#2ecc71' : '#f1c40f';
+  });
+
+  // ─── Captura, OCR i Cerca Local (Mode Estàtic) ───────────────────────────────
+  btnScan.addEventListener('click', async () => {
+    if (!streaming || !video || video.readyState < 2) return;
+    
+    // Desactivem temporalment el botó per evitar clics repetits
+    btnScan.disabled = true;
+    const oldText = btnScan.textContent;
+    btnScan.textContent = '⏳ Processant...';
+    statusText.style.color = '#f1c40f';
+    statusText.textContent = '⚙️ Capturant fotograma i aplicant filtres...';
+    
+    try {
+      // 1. Capturem el canvas en escala de grisos
+      const numPixels = canvas.width * canvas.height;
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      
+      const normalGrays = new Uint8Array(numPixels);
+      for (let i = 0; i < numPixels; i++) {
+        const r = data[i * 4];
+        const g = data[i * 4 + 1];
+        const b = data[i * 4 + 2];
+        normalGrays[i] = Math.round((r + g + b) / 3);
+      }
+      
+      // 2. Filtre de binarització local d'alt contrast (Bradley-Roth)
+      const integralNormal = new Float64Array(numPixels);
+      for (let y = 0; y < canvas.height; y++) {
+        let sumNormal = 0;
+        for (let x = 0; x < canvas.width; x++) {
+          const idx = y * canvas.width + x;
+          sumNormal += normalGrays[idx];
+          if (y === 0) {
+            integralNormal[idx] = sumNormal;
+          } else {
+            integralNormal[idx] = integralNormal[(y - 1) * canvas.width + x] + sumNormal;
+          }
+        }
+      }
+      
+      const windowSize = Math.max(30, Math.round(canvas.width / 8));
+      const halfWin = Math.floor(windowSize / 2);
+      const C = 10;
+      
+      const normalCanvas = document.createElement('canvas');
+      normalCanvas.width = canvas.width;
+      normalCanvas.height = canvas.height;
+      const nCtx = normalCanvas.getContext('2d');
+      const nImgData = nCtx.createImageData(canvas.width, canvas.height);
+      const nData = nImgData.data;
+      
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const idx = y * canvas.width + x;
+          const x0 = Math.max(0, x - halfWin);
+          const x1 = Math.min(canvas.width - 1, x + halfWin);
+          const y0 = Math.max(0, y - halfWin);
+          const y1 = Math.min(canvas.height - 1, y + halfWin);
+          
+          const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+          let sumN = integralNormal[y1 * canvas.width + x1];
+          if (y0 > 0) sumN -= integralNormal[(y0 - 1) * canvas.width + x1];
+          if (x0 > 0) sumN -= integralNormal[y1 * canvas.width + (x0 - 1)];
+          if (x0 > 0 && y0 > 0) sumN += integralNormal[(y0 - 1) * canvas.width + (x0 - 1)];
+          
+          const avgN = sumN / count;
+          const val = (normalGrays[idx] < (avgN - C)) ? 0 : 255;
+          const outIdx = idx * 4;
+          nData[outIdx] = val;
+          nData[outIdx+1] = val;
+          nData[outIdx+2] = val;
+          nData[outIdx+3] = 255;
+        }
+      }
+      nCtx.putImageData(nImgData, 0, 0);
+      const normalUrl = normalCanvas.toDataURL('image/jpeg', 1.0);
+      
+      // 3. Executem OCR localment al mòbil (worker d'un sol idioma 'cat' per a mòbils per estalviar memòria!)
+      statusText.textContent = '⚙️ Inicialitzant motor d\'OCR local...';
+      const worker = await Tesseract.createWorker('cat', 1, {
+        logger: m => {
+          if (m && m.status === 'recognizing text') {
+            statusText.textContent = `🔍 Processant OCR: ${Math.round(m.progress * 100)}%`;
+          }
+        }
+      });
+      
+      statusText.textContent = '🔍 Reconeixent lletres de la portada...';
+      const { data: { text: ocrText } } = await worker.recognize(normalUrl);
+      await worker.terminate();
+      
+      console.log("OCR completat al mòbil:", ocrText);
+      if (!ocrText || ocrText.trim().length < 4) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = '⚠️ No s\'ha trobat text suficient. Prova enfocant millor.';
+        return;
+      }
+      
+      // 4. Cerca a Open Library des del mòbil
+      statusText.textContent = '🌍 Buscant llibre a Open Library...';
+      const cleanQuery = ocrText.replace(/[^\w\sàéèíóòúüçñ]/gi, ' ').replace(/\s+/g, ' ').trim();
+      if (cleanQuery.length < 4) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = '⚠️ Text detectat massa curt per cercar.';
+        return;
+      }
+      
+      const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(cleanQuery)}&limit=5`;
+      const res = await fetch(searchUrl);
+      if (!res.ok) {
+        throw new Error('Error al connectar amb Open Library');
+      }
+      
+      const searchData = await res.json();
+      if (!searchData.docs || searchData.docs.length === 0) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = '⚠️ Cap llibre trobat per aquest text.';
+        return;
+      }
+      
+      // Fuzzy overlap
+      let bestBook = null;
+      let maxScore = -1;
+      const ocrWords = new Set(ocrText.toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/));
+      
+      for (const doc of searchData.docs) {
+        const titleWords = (doc.title || '').toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
+        let titleMatches = 0;
+        for (let w of titleWords) {
+          if (ocrWords.has(w)) titleMatches++;
+        }
+        const titleScore = titleWords.length > 0 ? (titleMatches / titleWords.length) : 0;
+        
+        let authorScore = 0;
+        if (doc.author_name && doc.author_name.length > 0) {
+          const authorWords = doc.author_name[0].toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
+          let authorMatches = 0;
+          for (let w of authorWords) {
+            if (ocrWords.has(w)) authorMatches++;
+          }
+          authorScore = authorWords.length > 0 ? (authorMatches / authorWords.length) : 0;
+        }
+        
+        const score = (titleScore * 0.6) + (authorScore * 0.4);
+        if (score > maxScore) {
+          maxScore = score;
+          bestBook = doc;
+        }
+      }
+      
+      if (!bestBook || maxScore < 0.20) {
+        statusText.style.color = '#e74c3c';
+        statusText.textContent = `⚠️ Coincidència massa baixa (${Math.round(maxScore * 100)}%). Prova altre cop.`;
+        return;
+      }
+      
+      // 5. Enviem el resultat a ntfy.sh
+      statusText.textContent = '📡 Sincronitzant llibre amb l\'ordinador...';
+      const payload = {
+        title: bestBook.title,
+        authors: bestBook.author_name ? bestBook.author_name.join(', ') : 'Desconegut',
+        publisher: bestBook.publisher ? bestBook.publisher[0] : 'Desconegut',
+        publishYear: bestBook.first_publish_year || bestBook.publish_year?.[0] || '',
+        isbn: bestBook.isbn ? bestBook.isbn[0] : '',
+        place: bestBook.publish_place ? bestBook.publish_place[0] : '',
+        subjects: bestBook.subject ? bestBook.subject.slice(0, 3).join(', ') : '',
+        score: Math.round(maxScore * 100)
+      };
+      
+      const pubRes = await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (pubRes.ok) {
+        statusText.style.color = '#2ecc71';
+        statusText.textContent = `✨ Llibre enviat: "${payload.title}" (${payload.score}% d'èxit)!`;
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      } else {
+        throw new Error('Error de connexió PubSub.');
+      }
+      
+    } catch (err) {
+      console.error(err);
+      statusText.style.color = '#e74c3c';
+      statusText.textContent = '❌ Error: ' + err.message;
+    } finally {
+      btnScan.disabled = false;
+      btnScan.textContent = oldText;
+    }
   });
 
   // ─── Qualitat de Text en Temps Real ──────────────────────────────────────────
