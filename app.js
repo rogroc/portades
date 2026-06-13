@@ -584,11 +584,45 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       path = '/';
     }
-    const mobileUrl = `${window.location.origin}${path}camera_mobile/?session=${sessionID}`;
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
+    
+    // Si s'arrenca en local per fitxer (file://), window.location.origin és "null".
+    // Ho corregim perquè l'enllaç contingui una referència útil.
+    let baseOrigin = window.location.origin;
+    if (baseOrigin === 'null' || !baseOrigin) {
+      baseOrigin = 'http://localhost:8000'; // fallback típic de desenvolupament
+    }
+    
+    const mobileUrl = `${baseOrigin}${path}camera_mobile/?session=${sessionID}`;
+    
+    // Utilitzem Google Charts com a API principal de codis QR (és altament fiable i té menys bloquejos d'AdBlock)
+    qrImg.src = `https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=${encodeURIComponent(mobileUrl)}&choe=UTF-8`;
+    
+    // Si Google Charts és bloquejat, fem fallback a api.qrserver.com
+    qrImg.onerror = () => {
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(mobileUrl)}`;
+      qrImg.onerror = null; // evitem bucle infinit si tampoc hi ha xarxa
+    };
     
     if (relayOpenMobile) {
       relayOpenMobile.href = mobileUrl;
+    }
+
+    // Botó per copiar l'enllaç de sincronització al portaretalls
+    const btnCopy = document.getElementById('btn-copy-mobile-url');
+    const copyMsg = document.getElementById('copy-success-msg');
+    if (btnCopy) {
+      btnCopy.addEventListener('click', () => {
+        navigator.clipboard.writeText(mobileUrl).then(() => {
+          if (copyMsg) {
+            copyMsg.style.display = 'inline';
+            setTimeout(() => {
+              copyMsg.style.display = 'none';
+            }, 2000);
+          }
+        }).catch(err => {
+          alert("Copia aquest enllaç manualment al teu mòbil:\n" + mobileUrl);
+        });
+      });
     }
   }
 
