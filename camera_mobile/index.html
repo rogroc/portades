@@ -498,6 +498,19 @@
   });
 
   // ─── Captura, OCR i Cerca Local (Mode Estàtic) ───────────────────────────────
+  async function sendSyncStatus(payload) {
+    if (!isStaticSync) return;
+    try {
+      await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Error enviant estat a l'ordinador:", e);
+    }
+  }
+
   btnScan.addEventListener('click', async () => {
     if (!streaming || !video || video.readyState < 2) return;
     
@@ -590,8 +603,10 @@
       
       console.log("OCR completat al mòbil:", ocrText);
       if (!ocrText || ocrText.trim().length < 4) {
+        const failMsg = '⚠️ No s\'ha trobat text suficient. Prova enfocant millor.';
         statusText.style.color = '#e74c3c';
-        statusText.textContent = '⚠️ No s\'ha trobat text suficient. Prova enfocant millor.';
+        statusText.textContent = failMsg;
+        await sendSyncStatus({ error: true, message: failMsg });
         return;
       }
       
@@ -599,8 +614,10 @@
       statusText.textContent = '🌍 Buscant llibre a Open Library...';
       const cleanQuery = ocrText.replace(/[^\w\sàéèíóòúüçñ]/gi, ' ').replace(/\s+/g, ' ').trim();
       if (cleanQuery.length < 4) {
+        const failMsg = '⚠️ Text detectat massa curt per cercar.';
         statusText.style.color = '#e74c3c';
-        statusText.textContent = '⚠️ Text detectat massa curt per cercar.';
+        statusText.textContent = failMsg;
+        await sendSyncStatus({ error: true, message: failMsg });
         return;
       }
       
@@ -612,8 +629,10 @@
       
       const searchData = await res.json();
       if (!searchData.docs || searchData.docs.length === 0) {
+        const failMsg = '⚠️ Cap llibre trobat per aquest text.';
         statusText.style.color = '#e74c3c';
-        statusText.textContent = '⚠️ Cap llibre trobat per aquest text.';
+        statusText.textContent = failMsg;
+        await sendSyncStatus({ error: true, message: failMsg });
         return;
       }
       
@@ -648,8 +667,10 @@
       }
       
       if (!bestBook || maxScore < 0.20) {
+        const failMsg = `⚠️ Coincidència massa baixa (${Math.round(maxScore * 100)}%). Prova altre cop.`;
         statusText.style.color = '#e74c3c';
-        statusText.textContent = `⚠️ Coincidència massa baixa (${Math.round(maxScore * 100)}%). Prova altre cop.`;
+        statusText.textContent = failMsg;
+        await sendSyncStatus({ error: true, message: failMsg });
         return;
       }
       
@@ -682,8 +703,10 @@
       
     } catch (err) {
       console.error(err);
+      const errMsg = '❌ Error: ' + err.message;
       statusText.style.color = '#e74c3c';
-      statusText.textContent = '❌ Error: ' + err.message;
+      statusText.textContent = errMsg;
+      await sendSyncStatus({ error: true, message: errMsg });
     } finally {
       btnScan.disabled = false;
       btnScan.textContent = oldText;

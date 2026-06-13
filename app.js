@@ -603,14 +603,41 @@ document.addEventListener('DOMContentLoaded', () => {
       const msg = JSON.parse(event.data);
       if (msg && msg.message) {
         const payload = JSON.parse(msg.message);
-        if (payload && payload.title) {
-          handleSyncedBook(payload);
+        if (payload) {
+          if (payload.title) {
+            handleSyncedBook(payload);
+          } else if (payload.error) {
+            handleSyncedError(payload);
+          }
         }
       }
     } catch (e) {
       // Ignorem missatges no JSON
     }
   };
+
+  function handleSyncedError(payload) {
+    if (relayStatusText) {
+      relayStatusText.innerHTML = `📥 Rebut: <strong style="color: #e74c3c;">${payload.message || 'Error desconegut escanejant amb el mòbil.'}</strong>`;
+    }
+    
+    // Actualitzem l'estat i esborrem resultats anteriors si n'hi ha
+    if (status) {
+      status.innerHTML = `<span style="color: #e74c3c;">${payload.message || 'Error de cerca mòbil.'}</span>`;
+    }
+    if (resultsContainer) {
+      resultsContainer.style.display = 'block';
+    }
+    if (rawOcr) {
+      rawOcr.innerHTML = `<strong>[Sincronització Mòbil] Error:</strong> ${payload.message || 'No s\'han trobat resultats.'}`;
+    }
+    if (cleanOcr) {
+      cleanOcr.innerText = 'Cerca fallida des del mòbil.';
+    }
+    if (bookResults) {
+      bookResults.innerHTML = `<p style="color: #e74c3c;">${payload.message || 'No s\'ha trobat cap llibre.'}</p>`;
+    }
+  }
 
   function handleSyncedBook(payload) {
     if (relayStatusText) {
