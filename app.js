@@ -940,46 +940,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const regionData = srcCtx.getImageData(bx0, by0, bw, bh);
         const d = regionData.data;
 
-        // Convertim a escala de grisos i trobem els percentils 10 i 90 per resoldre el llindar localment
-        const grays = new Uint8Array(bw * bh);
-        for (let i = 0; i < bw * bh; i++) {
-          const r = d[i * 4];
-          const g = d[i * 4 + 1];
-          const b = d[i * 4 + 2];
-          grays[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        // Detectem si el fons és fosc (text clar) mostrejant els 4 cantons
+        const samplePoints = [0, bw - 1, bw * (bh - 1), bw * bh - 1];
+        let cornerBrightness = 0;
+        for (const sp of samplePoints) {
+          const i = sp * 4;
+          cornerBrightness += 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
         }
+        const darkBackground = (cornerBrightness / samplePoints.length) < 100;
 
-        const sortedGrays = new Uint8Array(grays);
-        sortedGrays.sort();
-        const p10 = sortedGrays[Math.floor(sortedGrays.length * 0.10)];
-        const p90 = sortedGrays[Math.floor(sortedGrays.length * 0.90)];
-        const threshold = (p10 + p90) / 2;
-
-        // Calculem la brillantor del fons a partir de les vores del polígon
-        const borderWidth = Math.max(1, Math.min(4, Math.floor(Math.min(bw, bh) / 6)));
-        let sumBg = 0;
-        let countBg = 0;
-        for (let y = 0; y < bh; y++) {
-          for (let x = 0; x < bw; x++) {
-            const isBorder = (x < borderWidth || x >= bw - borderWidth || y < borderWidth || y >= bh - borderWidth);
-            if (isBorder) {
-              sumBg += grays[y * bw + x];
-              countBg++;
-            }
-          }
-        }
-        const bgBr = countBg > 0 ? (sumBg / countBg) : 128;
-        const darkText = bgBr > threshold;
-
-        // Binaritzem de forma adaptativa segons si el text és fosc o clar respecte al fons
-        for (let i = 0; i < bw * bh; i++) {
-          const gray = grays[i];
-          const val = darkText ? (gray < threshold ? 0 : 255) : (gray > threshold ? 0 : 255);
-          const dIdx = i * 4;
-          d[dIdx] = val;
-          d[dIdx+1] = val;
-          d[dIdx+2] = val;
-          d[dIdx+3] = 255;
+        // Binaritzem: convertim a grisos i apliquem llindar
+        for (let j = 0; j < d.length; j += 4) {
+          let gray = 0.299 * d[j] + 0.587 * d[j+1] + 0.114 * d[j+2];
+          if (darkBackground) gray = 255 - gray; // invertim si fons fosc
+          const val = gray < 160 ? 0 : 255;      // text = negre, fons = blanc
+          d[j] = val; d[j+1] = val; d[j+2] = val; d[j+3] = 255;
         }
 
         // Dibuixem la regió binaritzada al canvas màscara amb el clip del polígon
