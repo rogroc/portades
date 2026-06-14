@@ -1246,6 +1246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error(err);
       status.innerText = `❌ Error en el procés: ${err.message}`;
+    }
   }
 
   // --- FUNCIÓ DE PINTAT DINÀMIC QUE RESPECTA EL LLINDAR DEL SLIDER ---
