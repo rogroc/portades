@@ -474,7 +474,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const payload = JSON.parse(msg.message);
         console.log("📥 Payload descodificat:", payload);
         if (payload) {
-          if (payload.title) {
+          if (payload.isOcrResult) {
+            console.log("📥 Text d'OCR rebut des del mòbil, cercant...");
+            if (relayStatusText) {
+              relayStatusText.innerHTML = `📥 Rebut text d'OCR: <strong>"${payload.ocrText.substring(0, 30)}${payload.ocrText.length > 30 ? '...' : ''}"</strong>. Processant cerca...`;
+            }
+            searchCatalogsWithText(payload.ocrText, true);
+          } else if (payload.title) {
             console.log("📖 Llibre trobat correctament, processant...");
             handleSyncedBook(payload);
           } else if (payload.error) {
@@ -844,6 +850,183 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function searchCatalogsWithText(text, fromMobile = false, mergedWords = null) {
+    resultsContainer.style.display = 'block';
+    
+    // 2. NORMALITZACIÓ D'ARTEFACTES D'OCR
+    // Arreglem el clàssic error de la xarxa neuronal LSTM que confon la "ñ" amb la lligadura "fi"
+    let normalizedText = text.replace(/ufia/gi, 'uña')
+                             .replace(/fio/gi, 'ño')
+                             .replace(/fia/gi, 'ña')
+                             .replace(/iriba/gi, 'i riba')
+                             .replace(/\brba\b/gi, 'riba')
+                             .replace(/ll['’]?imperí?/gi, "i l'imperi")
+                             .replace(/il['’]?imperí?/gi, "i l'imperi")
+                             .replace(/l['’]?imperí?/gi, "l'imperi");
+
+    if (mergedWords) {
+      rawOcr.innerHTML = `<strong>Text final normalitzat:</strong> ${normalizedText}\n\n` +
+                         `<strong>Llista detallada de paraules detectades:</strong>\n` +
+                         mergedWords.map(w => `- [${w.source}] "${w.text}" (confiança: ${w.confidence}%, y: ${w.bbox.y0}px-${w.bbox.y1}px)`).join('\n');
+    } else {
+      rawOcr.innerHTML = `<strong>Text final normalitzat:</strong> ${normalizedText}\n\n` +
+                         `<strong>[Sincronització Mòbil]</strong> Rebut text brut del mòbil.`;
+    }
+    
+    status.innerHTML = fromMobile ? `⚙️ Processant text rebut del mòbil: <strong>"${normalizedText}"</strong>...` : '🧹 Netejant i analitzant el text...';
+    
+    const stopwords = new Set(['el', 'la', 'els', 'les', 'un', 'una', 'de', 'del', 'i', 'a', 'en', 'per', 'amb', 'y', 'los', 'las', 'para', 'con', 'the', 'of', 'and', 'in', 'for']);
+    const cleanText = normalizedText.toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '');
+    const ocrWordsList = cleanText.split(/\s+/);
+    const keywords = ocrWordsList.filter(w => !stopwords.has(w) && w.length > 2);
+
+    cleanOcr.innerText = `Paraules clau extretes:\n[ ${keywords.join(', ')} ]`;
+    
+    if (keywords.length === 0) {
+      status.innerText = '❌ El text llegit era massa curt o invàlid.';
+      return;
+    }
+
+    const apiKeywords = keywords.slice(0, 8);
+
+    // Cerca ampla a l'API: Demanem fins a 30 resultats per reordenar-los localment
+    status.innerText = '🌐 Cercant a Open Library (Cerca estricta AND)...';
+    let andQuery = apiKeywords.join('+');
+    let url = `https://openlibrary.org/search.json?q=${andQuery}&fields=key,title,author_name,first_publish_year,cover_i,publisher&limit=30`;
+    
+    try {
+      let response = await fetch(url);
+      let data = await response.json();
+      let searchStrategy = 'AND (Totes les paraules principals)';
+
+      if (data.numFound === 0 || data.docs.length === 0) {
+        status.innerText = '🌐 Cap resultat exacte. Cercant amb Cerca laxada OR...';
+        searchStrategy = 'OR (Major nombre de coincidències)';
+        let orQuery = apiKeywords.join('+OR+');
+        url = `https://openlibrary.org/search.json?q=${orQuery}&fields=key,title,author_name,first_publish_year,cover_i,publisher&limit=30`;
+        response = await fetch(url);
+        data = await response.json();
+      }
+
+      status.innerText = '✅ Analitzant les probabilitats...';
+      
+      if (data.numFound === 0 || data.docs.length === 0) {
+        bookResults.innerHTML = '<p>No s\'ha trobat cap llibre a nivell mundial que tingui aquestes paraules.</p>';
+        return;
+      }
+
+      // Filtrar i Reordenar localment basat en el nou algoritme de Token Overlap
+      allScoredBooks = data.docs.map(book => {
+        book.matchScore = calculateOverlapScore(book, normalizedText);
+        return book;
+      });
+      window._biblio.allScoredBooks = allScoredBooks;
+      lastSearchStrategy = searchStrategy;
+      lastUsedBNE = false;
+
+      // Calculem la millor nota obtinguda a Open Library per decidir si cal recórrer a la BNE (si és < 99%)
+      const maxOLScore = allScoredBooks.length > 0 ? Math.max(...allScoredBooks.map(b => b.matchScore)) : 0;
+
+      // Fallback a la BNE si no hi ha coincidència gairebé perfecta (>= 99%) i no som a GitHub Pages (allotjament estàtic)
+      const isStaticGitHubPages = window.location.hostname.endsWith('github.io');
+      if (maxOLScore < 0.99 && !isStaticGitHubPages) {
+        status.innerText = '🌐 Coincidència Open Library parcial o inexistent. Consultant la BNE...';
+        try {
+          const bneQuery = apiKeywords.join(' ');
+          const bneUrl = getBneApiUrl(bneQuery);
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+          const bneResData = await fetch(bneUrl, { signal: controller.signal })
+            .then(r => r.ok ? r.json() : null)
+            .catch(err => {
+              console.warn("La crida a la BNE ha fallat o ha expirat el temps d'espera:", err);
+              return null;
+            })
+            .finally(() => clearTimeout(timeoutId));
+          
+          if (bneResData && bneResData.docs && bneResData.docs.length > 0) {
+            window.bneCache = window.bneCache || {};
+            
+            const bneBooks = bneResData.docs.map(doc => {
+              const display = doc.pnx.display || {};
+              const addata = doc.pnx.addata || {};
+              
+              let title = 'Llibre desconegut';
+              if (display.title && display.title[0]) {
+                title = display.title[0].split('/')[0].trim();
+              }
+              
+              let author_name = [];
+              if (display.creator && display.creator[0]) {
+                author_name = [display.creator[0].split('$$')[0].trim()];
+              } else if (addata.creatorfull && addata.creatorfull[0]) {
+                author_name = [addata.creatorfull[0].split('$$')[0].trim()];
+              }
+              if (author_name.length > 0) {
+                let cleanAuthor = author_name[0].replace(/[\d-]/g, '').trim();
+                if (cleanAuthor.endsWith(',')) cleanAuthor = cleanAuthor.slice(0, -1).trim();
+                if (cleanAuthor.includes(',')) {
+                  cleanAuthor = cleanAuthor.split(',').reverse().join(' ').trim();
+                }
+                author_name = [cleanAuthor];
+              }
+
+              let publisher = [];
+              if (display.publisher && display.publisher[0]) {
+                let pub = display.publisher[0].split(':')[1];
+                if (pub) pub = pub.split(',')[0].trim();
+                else pub = display.publisher[0].trim();
+                publisher = [pub];
+              } else if (addata.pub && addata.pub[0]) {
+                publisher = [addata.pub[0]];
+              }
+
+              let first_publish_year = display.creationdate ? display.creationdate[0] : 'Any desc.';
+              let isbn = '';
+              if (addata.isbn && addata.isbn[0]) {
+                isbn = addata.isbn[0].replace(/[^0-9X]/gi, '');
+              }
+
+              const key = `/bne/${doc.context || 'L'}/${doc.recordid || (doc.pnx.control && doc.pnx.control.sourcrecordid ? doc.pnx.control.sourcrecordid[0] : Math.random())}`;
+              window.bneCache[key] = doc;
+
+              return {
+                key: key,
+                title: title,
+                author_name: author_name,
+                first_publish_year: first_publish_year,
+                publisher: publisher,
+                cover_i: null,
+                isBNE: true,
+                isbn: isbn
+              };
+            });
+
+            let scoredBne = bneBooks.map(book => {
+              book.matchScore = calculateOverlapScore(book, normalizedText);
+              return book;
+            });
+
+            allScoredBooks = [...allScoredBooks, ...scoredBne];
+            window._biblio.allScoredBooks = allScoredBooks;
+            if (scoredBne.length > 0) {
+              lastUsedBNE = true;
+            }
+          }
+        } catch (e) {
+          console.warn("Error consultant la BNE:", e);
+        }
+      }
+
+      renderBookList();
+    } catch (err) {
+      console.error(err);
+      status.innerText = `❌ Error en el procés de cerca: ${err.message}`;
+    }
+  }
+
   fileInput.addEventListener('change', handleFile);
 
   async function handleFile(e) {
@@ -1059,178 +1242,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let text = mergedWords.map(w => w.text).join(' ');
 
-      // 2. NORMALITZACIÓ D'ARTEFACTES D'OCR
-      // Arreglem el clàssic error de la xarxa neuronal LSTM que confon la "ñ" amb la lligadura "fi"
-      text = text.replace(/ufia/gi, 'uña')
-                 .replace(/fio/gi, 'ño')
-                 .replace(/fia/gi, 'ña')
-                 .replace(/iriba/gi, 'i riba')
-                 .replace(/\brba\b/gi, 'riba')
-                 .replace(/ll['’]?imperí?/gi, "i l'imperi")
-                 .replace(/il['’]?imperí?/gi, "i l'imperi")
-                 .replace(/l['’]?imperí?/gi, "l'imperi");
-
-      resultsContainer.style.display = 'block';
-      rawOcr.innerHTML = `<strong>Text final normalitzat:</strong> ${text}\n\n` +
-                         `<strong>Llista detallada de paraules detectades:</strong>\n` +
-                         mergedWords.map(w => `- [${w.source}] "${w.text}" (confiança: ${w.confidence}%, y: ${w.bbox.y0}px-${w.bbox.y1}px)`).join('\n');
-      
-       status.innerText = '🧹 Netejant i analitzant el text...';
-       const stopwords = new Set(['el', 'la', 'els', 'les', 'un', 'una', 'de', 'del', 'i', 'a', 'en', 'per', 'amb', 'y', 'los', 'las', 'para', 'con', 'the', 'of', 'and', 'in', 'for']);
-       
-       const cleanText = text.toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '');
-       const ocrWordsList = cleanText.split(/\s+/);
-       const keywords = ocrWordsList.filter(w => !stopwords.has(w) && w.length > 2);
-
-      cleanOcr.innerText = `Paraules clau extretes:\n[ ${keywords.join(', ')} ]`;
-      
-      if (keywords.length === 0) {
-        status.innerText = '❌ El text llegit era massa curt o invàlid.';
-        return;
-      }
-
-      // Ara com que hem netejat tota la brossa gràcies al filtre de Confiança, 
-      // podem enviar totes les paraules a Open Library sense por a contaminar la cerca.
-      const apiKeywords = keywords.slice(0, 8);
-
-      // Cerca ampla a l'API: Demanem fins a 30 resultats per reordenar-los localment
-      status.innerText = '🌐 Cercant a Open Library (Cerca estricta AND)...';
-      let andQuery = apiKeywords.join('+');
-      let url = `https://openlibrary.org/search.json?q=${andQuery}&fields=key,title,author_name,first_publish_year,cover_i,publisher&limit=30`;
-      
-      let response = await fetch(url);
-      let data = await response.json();
-      let searchStrategy = 'AND (Totes les paraules principals)';
-
-      if (data.numFound === 0 || data.docs.length === 0) {
-        status.innerText = '🌐 Cap resultat exacte. Cercant amb Cerca laxada OR...';
-        searchStrategy = 'OR (Major nombre de coincidències)';
-        let orQuery = apiKeywords.join('+OR+');
-        url = `https://openlibrary.org/search.json?q=${orQuery}&fields=key,title,author_name,first_publish_year,cover_i,publisher&limit=30`;
-        response = await fetch(url);
-        data = await response.json();
-      }
-
-      status.innerText = '✅ Analitzant les probabilitats...';
-      
-      if (data.numFound === 0 || data.docs.length === 0) {
-        bookResults.innerHTML = '<p>No s\'ha trobat cap llibre a nivell mundial que tingui aquestes paraules.</p>';
-        return;
-      }
-
-      // Filtrar i Reordenar localment basat en el nou algoritme de Token Overlap
-      allScoredBooks = data.docs.map(book => {
-        book.matchScore = calculateOverlapScore(book, text);
-        return book;
-      });
-      window._biblio.allScoredBooks = allScoredBooks;
-      lastSearchStrategy = searchStrategy;
-      lastUsedBNE = false;
-
-      // Calculem la millor nota obtinguda a Open Library per decidir si cal recórrer a la BNE (si és < 99%)
-      const maxOLScore = allScoredBooks.length > 0 ? Math.max(...allScoredBooks.map(b => b.matchScore)) : 0;
-
-      // Fallback a la BNE si no hi ha coincidència gairebé perfecta (>= 99%) i no som a GitHub Pages (allotjament estàtic)
-      const isStaticGitHubPages = window.location.hostname.endsWith('github.io');
-      if (maxOLScore < 0.99 && !isStaticGitHubPages) {
-        status.innerText = '🌐 Coincidència Open Library parcial o inexistent. Consultant la BNE...';
-        try {
-          const bneQuery = apiKeywords.join(' ');
-          const bneUrl = getBneApiUrl(bneQuery);
-          
-          // Timeout de 3 segons per evitar que es quedi penjat si hi ha problemes de xarxa o DNS
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-          const bneResData = await fetch(bneUrl, { signal: controller.signal })
-            .then(r => r.ok ? r.json() : null)
-            .catch(err => {
-              console.warn("La crida a la BNE ha fallat o ha expirat el temps d'espera:", err);
-              return null;
-            })
-            .finally(() => clearTimeout(timeoutId));
-          
-          if (bneResData && bneResData.docs && bneResData.docs.length > 0) {
-            window.bneCache = window.bneCache || {};
-            
-            const bneBooks = bneResData.docs.map(doc => {
-              const display = doc.pnx.display || {};
-              const addata = doc.pnx.addata || {};
-              
-              let title = 'Llibre desconegut';
-              if (display.title && display.title[0]) {
-                title = display.title[0].split('/')[0].trim();
-              }
-              
-              let author_name = [];
-              if (display.creator && display.creator[0]) {
-                author_name = [display.creator[0].split('$$')[0].trim()];
-              } else if (addata.creatorfull && addata.creatorfull[0]) {
-                author_name = [addata.creatorfull[0].split('$$')[0].trim()];
-              }
-              if (author_name.length > 0) {
-                let cleanAuthor = author_name[0].replace(/[\d-]/g, '').trim();
-                if (cleanAuthor.endsWith(',')) cleanAuthor = cleanAuthor.slice(0, -1).trim();
-                if (cleanAuthor.includes(',')) {
-                  cleanAuthor = cleanAuthor.split(',').reverse().join(' ').trim();
-                }
-                author_name = [cleanAuthor];
-              }
-
-              let publisher = [];
-              if (display.publisher && display.publisher[0]) {
-                let pub = display.publisher[0].split(':')[1];
-                if (pub) pub = pub.split(',')[0].trim();
-                else pub = display.publisher[0].trim();
-                publisher = [pub];
-              } else if (addata.pub && addata.pub[0]) {
-                publisher = [addata.pub[0]];
-              }
-
-              let first_publish_year = display.creationdate ? display.creationdate[0] : 'Any desc.';
-              let isbn = '';
-              if (addata.isbn && addata.isbn[0]) {
-                isbn = addata.isbn[0].replace(/[^0-9X]/gi, '');
-              }
-
-              const key = `/bne/${doc.context || 'L'}/${doc.recordid || (doc.pnx.control && doc.pnx.control.sourcrecordid ? doc.pnx.control.sourcrecordid[0] : Math.random())}`;
-              window.bneCache[key] = doc;
-
-              return {
-                key: key,
-                title: title,
-                author_name: author_name,
-                first_publish_year: first_publish_year,
-                publisher: publisher,
-                cover_i: null,
-                isBNE: true,
-                isbn: isbn
-              };
-            });
-
-            let scoredBne = bneBooks.map(book => {
-              book.matchScore = calculateOverlapScore(book, text);
-              return book;
-            });
-
-            // Afegim els resultats de la BNE a l'estat global de cerca
-            allScoredBooks = [...allScoredBooks, ...scoredBne];
-            window._biblio.allScoredBooks = allScoredBooks;
-            if (scoredBne.length > 0) {
-              lastUsedBNE = true;
-            }
-          }
-        } catch (e) {
-          console.warn("Error consultant la BNE:", e);
-        }
-      }
-
-      // Pintem la llista a la interfície
-      renderBookList();
+      await searchCatalogsWithText(text, false, mergedWords);
     } catch (err) {
       console.error(err);
       status.innerText = `❌ Error en el procés: ${err.message}`;
-    }
   }
 
   // --- FUNCIÓ DE PINTAT DINÀMIC QUE RESPECTA EL LLINDAR DEL SLIDER ---

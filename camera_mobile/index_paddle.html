@@ -949,88 +949,24 @@
         return;
       }
 
-      // Limitem a les 8 primeres paraules clau
-      const cleanQuery = keywords.slice(0, 8).join(' ');
-      
-      // 4. Cerca a Open Library des del mòbil
-      statusText.textContent = '🌍 Buscant llibre a Open Library...';
-      const searchUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(cleanQuery)}&limit=20`;
-      const res = await fetch(searchUrl);
-      if (!res.ok) {
-        throw new Error('Error al connectar amb Open Library');
-      }
-      
-      const searchData = await res.json();
-      if (!searchData.docs || searchData.docs.length === 0) {
-        const failMsg = '⚠️ Cap llibre trobat per aquest text.';
-        statusText.style.color = '#e74c3c';
-        statusText.textContent = failMsg;
-        await sendSyncStatus({ error: true, message: failMsg });
-        return;
-      }
-      
-      // Fuzzy overlap
-      let bestBook = null;
-      let maxScore = -1;
-      const ocrWords = new Set(cleanText.split(/\s+/));
-      
-      for (const doc of searchData.docs) {
-        const titleWords = (doc.title || '').toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
-        let titleMatches = 0;
-        for (let w of titleWords) {
-          if (ocrWords.has(w)) titleMatches++;
-        }
-        const titleScore = titleWords.length > 0 ? (titleMatches / titleWords.length) : 0;
-        
-        let authorScore = 0;
-        if (doc.author_name && doc.author_name.length > 0) {
-          const authorWords = doc.author_name[0].toLowerCase().replace(/[^\w\sàéèíóòúüçñ]/g, '').split(/\s+/).filter(w => w.length > 1);
-          let authorMatches = 0;
-          for (let w of authorWords) {
-            if (ocrWords.has(w)) authorMatches++;
-          }
-          authorScore = authorWords.length > 0 ? (authorMatches / authorWords.length) : 0;
-        }
-        
-        const score = (titleScore * 0.6) + (authorScore * 0.4);
-        if (score > maxScore) {
-          maxScore = score;
-          bestBook = doc;
-        }
-      }
-      
-      if (!bestBook || maxScore < 0.20) {
-        const failMsg = `⚠️ Coincidència massa baixa (${Math.round(maxScore * 100)}%). Prova altre cop.`;
-        statusText.style.color = '#e74c3c';
-        statusText.textContent = failMsg;
-        await sendSyncStatus({ error: true, message: failMsg });
-        return;
-      }
-      
-      // 5. Enviem el resultat a ntfy.sh
-      statusText.textContent = '📡 Sincronitzant llibre amb l\'ordinador...';
+      // 4. Enviem el text de l'OCR a l'ordinador via ntfy.sh
+      statusText.textContent = '📡 Enviant text de l\'OCR a l\'ordinador...';
       const payload = {
-        title: bestBook.title,
-        authors: bestBook.author_name ? bestBook.author_name.join(', ') : 'Desconegut',
-        publisher: bestBook.publisher ? bestBook.publisher[0] : 'Desconegut',
-        publishYear: bestBook.first_publish_year || bestBook.publish_year?.[0] || '',
-        isbn: bestBook.isbn ? bestBook.isbn[0] : '',
-        place: bestBook.publish_place ? bestBook.publish_place[0] : '',
-        subjects: bestBook.subject ? bestBook.subject.slice(0, 3).join(', ') : '',
-        score: Math.round(maxScore * 100)
+        isOcrResult: true,
+        ocrText: text
       };
       
-      console.log("📡 Mòbil intentant enviar llibre a ntfy.sh:", payload);
+      console.log("📡 Mòbil intentant enviar resultats d'OCR a ntfy.sh:", payload);
       const pubRes = await fetch(`https://ntfy.sh/biblioscan-sync-${sessionID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
-      console.log(`📡 Resposta de ntfy.sh (enviament llibre): Status ${pubRes.status}`);
+      console.log(`📡 Resposta de ntfy.sh (enviament resultats OCR): Status ${pubRes.status}`);
       
       if (pubRes.ok) {
         statusText.style.color = '#2ecc71';
-        statusText.textContent = `✨ Llibre enviat: "${payload.title}" (${payload.score}% d'èxit)!`;
+        statusText.textContent = '✨ Text de l\'OCR enviat correctament! Realitzant cerca a l\'ordinador...';
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
       } else {
         throw new Error('Error de connexió PubSub.');
