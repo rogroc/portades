@@ -268,7 +268,7 @@ function preprocessImage(file) {
       let width = img.width * SCALE_FACTOR;
       let height = img.height * SCALE_FACTOR;
       
-      const MAX_WIDTH = 450;
+      const MAX_WIDTH = 1000;
       if (width > MAX_WIDTH) {
         height = Math.round(height * (MAX_WIDTH / width));
         width = MAX_WIDTH;
@@ -333,216 +333,43 @@ function preprocessImage(file) {
       previewCtx.putImageData(previewImageData, 0, 0);
       const previewUrl = previewCanvas.toDataURL('image/jpeg', 1.0);
 
-      // 2. Generem les dues imatges en escala de grisos d'alt contrast, processades senceres
-      const cropHeight = height;
-      
-      const normalCanvas = document.createElement('canvas');
-      normalCanvas.width = width;
-      normalCanvas.height = cropHeight;
-      const normalCtx = normalCanvas.getContext('2d');
-      const normalImageData = normalCtx.createImageData(width, cropHeight);
-      const normalData = normalImageData.data;
-
-      const invertedCanvas = document.createElement('canvas');
-      invertedCanvas.width = width;
-      invertedCanvas.height = cropHeight;
-      const invertedCtx = invertedCanvas.getContext('2d');
-      const invertedImageData = invertedCtx.createImageData(width, cropHeight);
-      const invertedData = invertedImageData.data;
-
-      // Canvases adicionals per a l'estirament de contrast (contrast stretching)
-      const normalCanvasStretched = document.createElement('canvas');
-      normalCanvasStretched.width = width;
-      normalCanvasStretched.height = cropHeight;
-      const normalCtxStretched = normalCanvasStretched.getContext('2d');
-      const normalImageDataStretched = normalCtxStretched.createImageData(width, cropHeight);
-      const normalDataStretched = normalImageDataStretched.data;
-
-      const invertedCanvasStretched = document.createElement('canvas');
-      invertedCanvasStretched.width = width;
-      invertedCanvasStretched.height = cropHeight;
-      const invertedCtxStretched = invertedCanvasStretched.getContext('2d');
-      const invertedImageDataStretched = invertedCtxStretched.createImageData(width, cropHeight);
-      const invertedDataStretched = invertedImageDataStretched.data;
-
-      // Primer, calculem la mitjana de grisos per a tot el crop per separat
-      const normalGrays = new Uint8Array(width * cropHeight);
-      const invertedGrays = new Uint8Array(width * cropHeight);
-      const numCropPixels = width * cropHeight;
-      
-      for (let i = 0; i < numCropPixels; i++) {
-        const r = previewData[i * 4];
-        const g = previewData[i * 4 + 1];
-        const b = previewData[i * 4 + 2];
-        const grayVal = Math.round((r + g + b) / 3);
-        
-        normalGrays[i] = grayVal;
-        invertedGrays[i] = 255 - grayVal;
-      }
-      
-      // 3. Imatge Integral per a càlcul O(1) de la mitjana local (Bradley-Roth)
-      const integralNormal = new Float64Array(numCropPixels);
-      const integralInverted = new Float64Array(numCropPixels);
-      
-      for (let y = 0; y < cropHeight; y++) {
-        let sumNormal = 0;
-        let sumInverted = 0;
-        for (let x = 0; x < width; x++) {
-          const idx = y * width + x;
-          sumNormal += normalGrays[idx];
-          sumInverted += invertedGrays[idx];
-          
-          if (y === 0) {
-            integralNormal[idx] = sumNormal;
-            integralInverted[idx] = sumInverted;
-          } else {
-            const upIdx = (y - 1) * width + x;
-            integralNormal[idx] = integralNormal[upIdx] + sumNormal;
-            integralInverted[idx] = integralInverted[upIdx] + sumInverted;
-          }
-        }
+      // --- Càlcul de la llegibilitat / nitidesa (usant les dades en escala de grisos del preview) ---
+      const normalGrays = new Uint8Array(numPixels);
+      for (let i = 0; i < numPixels; i++) {
+        normalGrays[i] = Math.round((previewData[i*4] + previewData[i*4+1] + previewData[i*4+2]) / 3);
       }
 
-      const windowSize = Math.max(40, Math.round(width / 8));
-      const halfWin = Math.floor(windowSize / 2);
-      const C = 10; // Llindar de contrast local
-
-      for (let y = 0; y < cropHeight; y++) {
-        for (let x = 0; x < width; x++) {
-          const idx = y * width + x;
-          
-          const x0 = Math.max(0, x - halfWin);
-          const x1 = Math.min(width - 1, x + halfWin);
-          const y0 = Math.max(0, y - halfWin);
-          const y1 = Math.min(cropHeight - 1, y + halfWin);
-          
-          const count = (x1 - x0 + 1) * (y1 - y0 + 1);
-          
-          // --- Passada Normal Adaptativa ---
-          let sumN = integralNormal[y1 * width + x1];
-          if (y0 > 0) sumN -= integralNormal[(y0 - 1) * width + x1];
-          if (x0 > 0) sumN -= integralNormal[y1 * width + (x0 - 1)];
-          if (x0 > 0 && y0 > 0) sumN += integralNormal[(y0 - 1) * width + (x0 - 1)];
-          const avgN = sumN / count;
-          const normalVal = (normalGrays[idx] < (avgN - C)) ? 0 : 255;
-
-          // --- Passada Invertida Adaptativa ---
-          let sumI = integralInverted[y1 * width + x1];
-          if (y0 > 0) sumI -= integralInverted[(y0 - 1) * width + x1];
-          if (x0 > 0) sumI -= integralInverted[y1 * width + (x0 - 1)];
-          if (x0 > 0 && y0 > 0) sumI += integralInverted[(y0 - 1) * width + (x0 - 1)];
-          const avgI = sumI / count;
-          const invertedVal = (invertedGrays[idx] < (avgI - C)) ? 0 : 255;
-
-          const outIdx = idx * 4;
-          normalData[outIdx]     = normalVal;
-          normalData[outIdx + 1] = normalVal;
-          normalData[outIdx + 2] = normalVal;
-          normalData[outIdx + 3] = 255;
-
-          invertedData[outIdx]     = invertedVal;
-          invertedData[outIdx + 1] = invertedVal;
-          invertedData[outIdx + 2] = invertedVal;
-          invertedData[outIdx + 3] = 255;
-        }
-      }
-
-      // --- Passada de Binarització Fixa (T = 105) ---
-      const T = 105;
-      for (let i = 0; i < numCropPixels; i++) {
-        const nG = normalGrays[i];
-        const normalValStr = (nG < T) ? 0 : 255;
-
-        const iG = invertedGrays[i];
-        const invertedValStr = (iG < T) ? 0 : 255;
-
-        const outIdx = i * 4;
-        normalDataStretched[outIdx]     = normalValStr;
-        normalDataStretched[outIdx + 1] = normalValStr;
-        normalDataStretched[outIdx + 2] = normalValStr;
-        normalDataStretched[outIdx + 3] = 255;
-
-        invertedDataStretched[outIdx]     = invertedValStr;
-        invertedDataStretched[outIdx + 1] = invertedValStr;
-        invertedDataStretched[outIdx + 2] = invertedValStr;
-        invertedDataStretched[outIdx + 3] = 255;
-      }
-
-      normalCtx.putImageData(normalImageData, 0, 0);
-      const normalUrl = normalCanvas.toDataURL('image/jpeg', 1.0);
-
-      invertedCtx.putImageData(invertedImageData, 0, 0);
-      const invertedUrl = invertedCanvas.toDataURL('image/jpeg', 1.0);
-
-      normalCtxStretched.putImageData(normalImageDataStretched, 0, 0);
-      const normalUrlStretched = normalCanvasStretched.toDataURL('image/jpeg', 1.0);
-
-      invertedCtxStretched.putImageData(invertedImageDataStretched, 0, 0);
-      const invertedUrlStretched = invertedCanvasStretched.toDataURL('image/jpeg', 1.0);
-
-      // --- Càlcul de la llegibilitat / nitidesa per a tota la imatge ---
-      let minGrayVal = 255;
-      let maxGrayVal = 0;
-      let edgeSumVal = 0;
-      let edgeCountVal = 0;
-      
-      const step = Math.max(1, Math.round(numCropPixels / 40000));
-      for (let i = 0; i < numCropPixels; i += step) {
+      let minGrayVal = 255, maxGrayVal = 0, edgeSumVal = 0, edgeCountVal = 0;
+      const step = Math.max(1, Math.round(numPixels / 40000));
+      for (let i = 0; i < numPixels; i += step) {
         const g = normalGrays[i];
         if (g < minGrayVal) minGrayVal = g;
         if (g > maxGrayVal) maxGrayVal = g;
       }
-      
       const contrastVal = maxGrayVal - minGrayVal;
       const skip = step * 2 + 1;
-      
-      for (let y = 1; y < cropHeight - 1; y += skip) {
+      for (let y = 1; y < height - 1; y += skip) {
         for (let x = 1; x < width - 1; x += skip) {
           const idx = y * width + x;
           const val = normalGrays[idx];
-          
           const diffX = Math.abs(val - normalGrays[idx + 1]);
           const diffY = Math.abs(val - normalGrays[idx + width]);
-          
-          if (diffX > 15 || diffY > 15) {
-            edgeSumVal += (diffX + diffY);
-            edgeCountVal++;
-          }
+          if (diffX > 15 || diffY > 15) { edgeSumVal += (diffX + diffY); edgeCountVal++; }
         }
       }
-      
-      const edgeDensityVal = edgeCountVal / ((width * cropHeight) / (skip * skip));
+      const edgeDensityVal = edgeCountVal / ((width * height) / (skip * skip));
       const avgEdgeStrengthVal = edgeCountVal > 0 ? (edgeSumVal / edgeCountVal) : 0;
-      
-      let focusScoreVal = Math.min(100, Math.round((avgEdgeStrengthVal / 50) * 100));
-      let densityScoreVal = Math.min(100, Math.round((edgeDensityVal / 0.16) * 100));
-      
-      let readabilityScore = Math.round((focusScoreVal * 0.6) + (densityScoreVal * 0.4));
-      
-      if (contrastVal < 90) {
-        readabilityScore = Math.round(readabilityScore * (contrastVal / 90));
-      }
-      
+      let readabilityScore = Math.round((Math.min(100, Math.round((avgEdgeStrengthVal/50)*100)) * 0.6) +
+                                        (Math.min(100, Math.round((edgeDensityVal/0.16)*100)) * 0.4));
+      if (contrastVal < 90) readabilityScore = Math.round(readabilityScore * (contrastVal / 90));
       readabilityScore = Math.max(5, Math.min(99, readabilityScore));
-      
-      let readabilityLabel = '';
-      let readabilityColor = '';
-      
-      if (readabilityScore < 40) {
-        readabilityLabel = '⚠️ Desenfocada o amb poc text';
-        readabilityColor = '#e74c3c';
-      } else if (readabilityScore < 75) {
-        readabilityLabel = '⚡ Nitidesa mitjana';
-        readabilityColor = '#f39c12';
-      } else {
-        readabilityLabel = '✨ Nitidesa excel·lent';
-        readabilityColor = '#2ecc71';
-      }
 
-      resolve({ 
-        previewUrl, normalUrl, invertedUrl, normalUrlStretched, invertedUrlStretched,
-        readabilityScore, readabilityLabel, readabilityColor
-      });
+      let readabilityLabel = '', readabilityColor = '';
+      if (readabilityScore < 40)      { readabilityLabel = '⚠️ Desenfocada o amb poc text'; readabilityColor = '#e74c3c'; }
+      else if (readabilityScore < 75) { readabilityLabel = '⚡ Nitidesa mitjana';            readabilityColor = '#f39c12'; }
+      else                            { readabilityLabel = '✨ Nitidesa excel·lent';          readabilityColor = '#2ecc71'; }
+
+      resolve({ previewUrl, readabilityScore, readabilityLabel, readabilityColor });
     };
     img.onerror = reject;
     
@@ -590,10 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const bookResults = document.getElementById('book-results');
   const thresholdSlider = document.getElementById('threshold-slider');
   const thresholdVal = document.getElementById('threshold-val');
-  const debugCheck = document.getElementById('debug-check');
-  const debugImagesContainer = document.getElementById('debug-images-container');
-  const debugNormal = document.getElementById('debug-normal');
-  const debugInverted = document.getElementById('debug-inverted');
+
 
   // --- Generació i enllaç de la Sessió de Sincronització Estàtica (GitHub Pages) ---
   let sessionID = localStorage.getItem('biblioscan_session_id');
@@ -841,12 +665,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  debugCheck.addEventListener('change', (e) => {
-    debugImagesContainer.style.display = e.target.checked ? 'flex' : 'none';
-  });
+
 
   // Helper per descarregar fitxers grans mostrant el progrés a la interfície
   async function fetchWithProgress(url, label, statusElement) {
+    console.log(`[PaddleOCR:fetchWithProgress] Iniciant descàrrega de: ${label} des de ${url}`);
     statusElement.innerHTML = `⚙️ Connectant per descarregar ${label}...`;
     const response = await fetch(url);
     if (!response.ok) {
@@ -859,6 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (total === 0) {
       statusElement.innerHTML = `⚙️ Descarregant ${label} (mida desconeguda)...`;
       const blob = await response.blob();
+      console.log(`[PaddleOCR:fetchWithProgress] Finalitzada descàrrega (mida desconeguda) de: ${label}`);
       return URL.createObjectURL(blob);
     }
     
@@ -876,6 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     const blob = new Blob(chunks);
+    console.log(`[PaddleOCR:fetchWithProgress] Finalitzada descàrrega de: ${label}`);
     return URL.createObjectURL(blob);
   }
 
@@ -887,8 +712,8 @@ document.addEventListener('DOMContentLoaded', () => {
     status.innerHTML = `⚙️ Inicialitzant: Carregant llibreria PaddleOCR...`;
     
     try {
-      console.log("[PaddleOCR] Important la llibreria @paddleocr/paddleocr-js...");
-      const module = await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.3.2/+esm');
+      console.log("[PaddleOCR] Important la llibreria local ./paddleocr.js...");
+      const module = await import('./paddleocr.js?t=' + Date.now());
       const PaddleOCR = module.PaddleOCR;
       console.log("[PaddleOCR] Llibreria importada correctament.");
 
@@ -898,12 +723,12 @@ document.addEventListener('DOMContentLoaded', () => {
       let recUrl = '';
 
       if (!isLocalFile) {
-        detUrl = new URL('./models/PP-OCRv5_mobile_det_onnx.tar', window.location.href).href;
-        recUrl = new URL('./models/PP-OCRv5_mobile_rec_onnx.tar', window.location.href).href;
+        detUrl = new URL('./models/PP-OCRv5_mobile_det_onnx.tar?t=' + Date.now(), window.location.href).href;
+        recUrl = new URL('./models/PP-OCRv5_mobile_rec_onnx.tar?t=' + Date.now(), window.location.href).href;
       } else {
         // Si estem en file://, demanem els fitxers al CDN del repositori de GitHub
-        detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar';
-        recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar';
+        detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar?t=' + Date.now();
+        recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar?t=' + Date.now();
       }
       
       console.log("[PaddleOCR] Rutes resoltes a l'ordinador:", { detUrl, recUrl });
@@ -929,11 +754,88 @@ document.addEventListener('DOMContentLoaded', () => {
         ortOptions: {
           backend: 'wasm',
           wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/',
-          numThreads: 4, // 4 fils a l'ordinador per a màxima velocitat
-          simd: true
+          numThreads: 1, // Usem 1 fil per evitar necessitat de COOP/COEP headers i SharedArrayBuffer
+          simd: true,
+          proxy: false  // Desactiva el Web Worker de proxy intern d'ONNX per evitar bloquejos de CORS/sandbox
         }
       });
       console.log("[PaddleOCR] ocrInstance inicialitzat correctament a l'ordinador.");
+
+      // Solució Híbrida: PaddleOCR per a detecció, Tesseract per a reconeixement
+      if (ocrInstance) {
+        // 1. Ampliem les àrees de detecció (polígons) de PaddleOCR amb un marge de 6px mantenint la inclinació original del polígon
+        if (ocrInstance.detModel) {
+          console.log("[HybridOCR] Configurant ampliació de marges de detecció conservant inclinació (6px)...");
+          const originalDetPredict = ocrInstance.detModel.predict;
+          ocrInstance.detModel.predict = async function(cv, mats, options) {
+            const results = await originalDetPredict.call(ocrInstance.detModel, cv, mats, options);
+            const margin = 6;
+            results.forEach((res, imgIdx) => {
+              if (res && res.boxes) {
+                const mat = mats[imgIdx];
+                const maxW = mat ? mat.cols : 99999;
+                const maxH = mat ? mat.rows : 99999;
+                
+                res.boxes.forEach(box => {
+                  if (box.poly && box.poly.length === 4) {
+                    // Modifiquem cadascun dels 4 punts conservant el paral·lelogram original
+                    // 0: top-left, 1: top-right, 2: bottom-right, 3: bottom-left
+                    box.poly[0][0] = Math.max(0, box.poly[0][0] - margin);
+                    box.poly[0][1] = Math.max(0, box.poly[0][1] - margin);
+                    
+                    box.poly[1][0] = Math.min(maxW, box.poly[1][0] + margin);
+                    box.poly[1][1] = Math.max(0, box.poly[1][1] - margin);
+                    
+                    box.poly[2][0] = Math.min(maxW, box.poly[2][0] + margin);
+                    box.poly[2][1] = Math.min(maxH, box.poly[2][1] + margin);
+                    
+                    box.poly[3][0] = Math.max(0, box.poly[3][0] - margin);
+                    box.poly[3][1] = Math.min(maxH, box.poly[3][1] + margin);
+                  }
+                });
+              }
+            });
+            return results;
+          };
+        }
+
+        // 2. Estratègia de Màscara: PaddleOCR detecta on és el text, generem una
+        //    imatge nova (fons blanc + text preservat), i Tesseract llegeix la pàgina sencera.
+        //    Això dona a Tesseract el context de maquetació complet per una precisió molt superior.
+        console.log("[HybridOCR] Estratègia de Màscara: PaddleOCR (detecció) + Tesseract (reconeixement pàgina completa) activada.");
+        
+        // Inicialitzem els 2 workers de Tesseract (cat, spa) una sola vegada
+        if (!window.tesseractParallelWorkersInitialized) {
+          console.log("[HybridOCR] Inicialitzant els 2 workers de Tesseract (cat, spa)...");
+          const [wCat, wSpa] = await Promise.all([
+            Tesseract.createWorker('cat'),
+            Tesseract.createWorker('spa')
+          ]);
+          window.tesseractWorkerCat = wCat;
+          window.tesseractWorkerSpa = wSpa;
+          // PSM 3: anàlisi automàtica de pàgina completa (Tesseract tria les columnes/línies ell mateix)
+          await Promise.all([
+            window.tesseractWorkerCat.setParameters({ tessedit_pageseg_mode: '3' }),
+            window.tesseractWorkerSpa.setParameters({ tessedit_pageseg_mode: '3' })
+          ]);
+          window.tesseractParallelWorkersInitialized = true;
+          console.log("[HybridOCR] Workers Tesseract preparats (PSM 3).");
+        }
+        
+        // Guardem la referència al canvas de la imatge original per construir la màscara
+        ocrInstance._sourceCanvas = null;
+        
+        // Sobreescrivim recModel.predict perquè retorni resultats buits i lleugers:
+        // el reconeixement real es fa a performMaskedOcr(), que s'invoca des de handleFile
+        // un cop tenim tant els polígons com el canvas de la imatge original.
+        if (ocrInstance.recModel) {
+          ocrInstance.recModel.predict = async function(cv, mats, options) {
+            // Retornem un placeholder per cada mat; el text real el posarà performMaskedOcr
+            return mats.map(() => ({ text: '__MASK_PENDING__', score: 1.0 }));
+          };
+        }
+      }
+
       return ocrInstance;
     } catch (err) {
       console.error("[PaddleOCR] Error en getOcrInstance (ordinador):", err);
@@ -964,160 +866,201 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       status.innerText = '⚙️ Inicialitzant motor OCR i aplicant filtres de visió...';
       const { 
-        previewUrl, normalUrl, invertedUrl, normalUrlStretched, invertedUrlStretched,
-        readabilityScore, readabilityLabel, readabilityColor
+        previewUrl, readabilityScore, readabilityLabel, readabilityColor
       } = await preprocessImage(file);
       
-      // Mostrem la imatge a color equalitzada al preview per a una millor estètica
+      // Mostrem la imatge a color equalitzada al preview
       preview.src = previewUrl;
-      
-      // Assignem les imatges de depuració adaptativa
-      debugNormal.src = normalUrl;
-      debugInverted.src = invertedUrl;
       
       // Mostrem la llegibilitat de la foto abans de fer OCR
       status.innerHTML = `⚙️ Nitidesa de la foto: <strong style="color: ${readabilityColor}">${readabilityScore}% (${readabilityLabel})</strong>.<br>Inicialitzant PaddleOCR...`;
       
       const ocr = await getOcrInstance();
       
-      status.innerText = '🔍 Reconeixent text amb PaddleOCR (Passada 1 de 2: Imatge Normal)...';
-      const ocrNormalRes = await ocr.predict(normalUrl);
-      
-      status.innerText = '🔍 Reconeixent text amb PaddleOCR (Passada 2 de 2: Imatge Invertida)...';
-      const ocrInvertedRes = await ocr.predict(invertedUrl);
-
-      // Convertim els elements de PaddleOCR a format compatible
-      const pageResultNormal = ocrNormalRes[0] || {};
-      const itemsNormal = pageResultNormal.items || [];
-      const wordsNormal = itemsNormal.map(item => {
-        const xs = item.poly.map(p => p[0]);
-        const ys = item.poly.map(p => p[1]);
-        return {
-          text: item.text,
-          confidence: Math.round(item.score * 100),
-          bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) },
-          source: 'normal_adaptive'
-        };
+      status.innerText = '🔍 Detectant àrees de text amb PaddleOCR...';
+      const colorBlob = await fetch(previewUrl).then(r => r.blob());
+      const ocrRes = await ocr.predict(colorBlob, {
+        text_det_limit_side_len: 960,
+        text_det_limit_type: 'min',
+        text_det_thresh: 0.2,
+        text_det_box_thresh: 0.4
       });
 
-      const pageResultInverted = ocrInvertedRes[0] || {};
-      const itemsInverted = pageResultInverted.items || [];
-      const wordsInverted = itemsInverted.map(item => {
-        const xs = item.poly.map(p => p[0]);
-        const ys = item.poly.map(p => p[1]);
-        return {
-          text: item.text,
-          confidence: Math.round(item.score * 100),
-          bbox: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) },
-          source: 'inverted_adaptive'
-        };
+      // Extraiem els polígons detectats per PaddleOCR
+      const pageResult = ocrRes[0] || {};
+      const detectedPolys = (pageResult.items || []).map(item => item.poly);
+      console.log(`[HybridOCR] PaddleOCR ha detectat ${detectedPolys.length} regions de text.`);
+
+      if (detectedPolys.length === 0) {
+        status.innerText = '❌ PaddleOCR no ha detectat cap àrea de text a la portada.';
+        return;
+      }
+
+      // --- ESTRATÈGIA MÀSCARA ---
+      // Carreguem la imatge color original en un canvas
+      status.innerText = '🎭 Generant imatge màscara (fons blanc + text preservat)...';
+      const sourceImg = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = previewUrl;
       });
 
-      const wordsNormalStr = [];
-      const wordsInvertedStr = [];
+      // Canvas de la imatge original
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = sourceImg.naturalWidth;
+      srcCanvas.height = sourceImg.naturalHeight;
+      const srcCtx = srcCanvas.getContext('2d');
+      srcCtx.drawImage(sourceImg, 0, 0);
 
-      if (wordsNormal.length === 0 && wordsInverted.length === 0) {
+      // Canvas màscara: fons blanc, es dibuixa cada polígon binaritzat (negre sobre blanc)
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = srcCanvas.width;
+      maskCanvas.height = srcCanvas.height;
+      const maskCtx = maskCanvas.getContext('2d');
+      maskCtx.fillStyle = '#ffffff';
+      maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+      const PAD = 8;
+      for (const poly of detectedPolys) {
+        if (!poly || poly.length < 3) continue;
+
+        // Bounding box del polígon (ampliada)
+        const xs = poly.map(p => p[0]);
+        const ys = poly.map(p => p[1]);
+        const bx0 = Math.max(0, Math.floor(Math.min(...xs)) - PAD);
+        const by0 = Math.max(0, Math.floor(Math.min(...ys)) - PAD);
+        const bx1 = Math.min(srcCanvas.width,  Math.ceil(Math.max(...xs)) + PAD);
+        const by1 = Math.min(srcCanvas.height, Math.ceil(Math.max(...ys)) + PAD);
+        const bw = bx1 - bx0;
+        const bh = by1 - by0;
+        if (bw <= 0 || bh <= 0) continue;
+
+        // Llegim els píxels originals de la zona del polígon
+        const regionData = srcCtx.getImageData(bx0, by0, bw, bh);
+        const d = regionData.data;
+
+        // Convertim a escala de grisos i trobem els percentils 10 i 90 per resoldre el llindar localment
+        const grays = new Uint8Array(bw * bh);
+        for (let i = 0; i < bw * bh; i++) {
+          const r = d[i * 4];
+          const g = d[i * 4 + 1];
+          const b = d[i * 4 + 2];
+          grays[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        }
+
+        const sortedGrays = new Uint8Array(grays);
+        sortedGrays.sort();
+        const p10 = sortedGrays[Math.floor(sortedGrays.length * 0.10)];
+        const p90 = sortedGrays[Math.floor(sortedGrays.length * 0.90)];
+        const threshold = (p10 + p90) / 2;
+
+        // Calculem la brillantor del fons a partir de les vores del polígon
+        const borderWidth = Math.max(1, Math.min(4, Math.floor(Math.min(bw, bh) / 6)));
+        let sumBg = 0;
+        let countBg = 0;
+        for (let y = 0; y < bh; y++) {
+          for (let x = 0; x < bw; x++) {
+            const isBorder = (x < borderWidth || x >= bw - borderWidth || y < borderWidth || y >= bh - borderWidth);
+            if (isBorder) {
+              sumBg += grays[y * bw + x];
+              countBg++;
+            }
+          }
+        }
+        const bgBr = countBg > 0 ? (sumBg / countBg) : 128;
+        const darkText = bgBr > threshold;
+
+        // Binaritzem de forma adaptativa segons si el text és fosc o clar respecte al fons
+        for (let i = 0; i < bw * bh; i++) {
+          const gray = grays[i];
+          const val = darkText ? (gray < threshold ? 0 : 255) : (gray > threshold ? 0 : 255);
+          const dIdx = i * 4;
+          d[dIdx] = val;
+          d[dIdx+1] = val;
+          d[dIdx+2] = val;
+          d[dIdx+3] = 255;
+        }
+
+        // Dibuixem la regió binaritzada al canvas màscara amb el clip del polígon
+        const tmpC = document.createElement('canvas');
+        tmpC.width = bw; tmpC.height = bh;
+        tmpC.getContext('2d').putImageData(regionData, 0, 0);
+
+        maskCtx.save();
+        maskCtx.beginPath();
+        const cxp = poly.reduce((s, p) => s + p[0], 0) / poly.length;
+        const cyp = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+        poly.forEach((pt, idx) => {
+          const dx = pt[0] - cxp; const dy = pt[1] - cyp;
+          const len = Math.sqrt(dx*dx + dy*dy) || 1;
+          const ex = pt[0] + (dx/len)*PAD; const ey = pt[1] + (dy/len)*PAD;
+          if (idx === 0) maskCtx.moveTo(ex, ey); else maskCtx.lineTo(ex, ey);
+        });
+        maskCtx.closePath();
+        maskCtx.clip();
+        maskCtx.drawImage(tmpC, bx0, by0);
+        maskCtx.restore();
+      }
+
+      console.log('[HybridOCR] Imatge màscara generada. Enviant a Tesseract (PSM 3)...');
+      status.innerText = '📖 Llegint text amb Tesseract (pàgina completa)...';
+
+      // Executem Tesseract en paral·lel (cat + spa) sobre la imatge màscara completa
+      const [resCat, resSpa] = await Promise.all([
+        window.tesseractWorkerCat.recognize(maskCanvas),
+        window.tesseractWorkerSpa.recognize(maskCanvas)
+      ]);
+
+      // Triem l'idioma amb més confiança global
+      const catConf = resCat.data.confidence;
+      const spaConf = resSpa.data.confidence;
+      const bestRes = catConf >= spaConf ? resCat : resSpa;
+      const bestLang = catConf >= spaConf ? 'cat' : 'spa';
+      console.log(`[HybridOCR] Confiança cat=${catConf}%, spa=${spaConf}% → triat: ${bestLang}`);
+
+      // Convertim les paraules de Tesseract al format que espera la resta del codi
+      const tesseractWords = bestRes.data.words || [];
+      const wordsNormal = tesseractWords
+        .filter(w => w.confidence > 30 && w.text.trim().length > 0)
+        .map(w => ({
+          text: w.text.trim(),
+          confidence: w.confidence,
+          bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 },
+          source: 'mask_tesseract'
+        }));
+
+      if (wordsNormal.length === 0) {
         status.innerText = '❌ No s\'ha detectat cap paraula a la portada.';
         return;
       }
 
-      // --- VISIÓ PER COMPUTADOR / DETECCIÓ I SEGMENTACIÓ D'ÀREES DE TEXT ---
-      // Calculem la mida (alçada de caixa) de totes les paraules detectades entre les passades
-      const allHeights = [...wordsNormal, ...wordsInverted, ...wordsNormalStr, ...wordsInvertedStr].map(w => w.bbox.y1 - w.bbox.y0);
+      // Filtrem per alçada mínima (20% de la lletra més gran) i confiança > 40
+      const allHeights = wordsNormal.map(w => w.bbox.y1 - w.bbox.y0);
       const maxWordHeight = allHeights.length > 0 ? Math.max(...allHeights) : 0;
-      
-      // Ajustem el llindar d'alçada al 20% de la lletra més gran perquè l'autor no quedi descartat si és més petit que el títol
       const heightThreshold = maxWordHeight * 0.20;
-
-      // Filtrem per alçada i confiança.
-      const canvasHeight = preview.naturalHeight || preview.height || 800;
-      const validNormal = wordsNormal.filter(w => 
-        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && 
-        w.confidence > 40
-      );
-      const validInverted = wordsInverted.filter(w => 
-        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && 
-        w.confidence > 40
-      );
-      const validNormalStr = wordsNormalStr.filter(w => 
-        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && 
-        w.confidence > 40
-      );
-      const validInvertedStr = wordsInvertedStr.filter(w => 
-        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && 
-        w.confidence > 40
+      const mergedWords = wordsNormal.filter(w =>
+        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && w.confidence > 40
       );
 
-      // Funció de fusió evitant duplicats espacials per IoU (Intersection over Union)
-      function mergeWordLists(target, source) {
-        source.forEach(wSource => {
-          const isDuplicate = target.some(wTarget => {
-            const boxTarget = wTarget.bbox;
-            const boxSource = wSource.bbox;
-            
-            const xOverlap = Math.max(0, Math.min(boxTarget.x1, boxSource.x1) - Math.max(boxTarget.x0, boxSource.x0));
-            const yOverlap = Math.max(0, Math.min(boxTarget.y1, boxSource.y1) - Math.max(boxTarget.y0, boxSource.y0));
-            const overlapArea = xOverlap * yOverlap;
-            
-            const areaTarget = (boxTarget.x1 - boxTarget.x0) * (boxTarget.y1 - boxTarget.y0);
-            const areaSource = (boxSource.x1 - boxSource.x0) * (boxSource.y1 - boxSource.y0);
-            const minArea = Math.min(areaTarget, areaSource);
-            
-            return (overlapArea / minArea) > 0.40;
-          });
-
-          if (!isDuplicate) {
-            target.push(wSource);
-          } else {
-            const idx = target.findIndex(wTarget => {
-              const boxTarget = wTarget.bbox;
-              const boxSource = wSource.bbox;
-              const xOverlap = Math.max(0, Math.min(boxTarget.x1, boxSource.x1) - Math.max(boxTarget.x0, boxSource.x0));
-              const yOverlap = Math.max(0, Math.min(boxTarget.y1, boxSource.y1) - Math.max(boxTarget.y0, boxSource.y0));
-              const overlapArea = xOverlap * yOverlap;
-              const areaTarget = (boxTarget.x1 - boxTarget.x0) * (boxTarget.y1 - boxTarget.y0);
-              const areaSource = (boxSource.x1 - boxSource.x0) * (boxSource.y1 - boxSource.y0);
-              return (overlapArea / Math.min(areaTarget, areaSource)) > 0.40;
-            });
-            if (idx !== -1 && wSource.confidence > target[idx].confidence) {
-              target[idx] = wSource;
-            }
-          }
-        });
-      }
-
-      const mergedWords = [...validNormal];
-      mergeWordLists(mergedWords, validInverted);
-      mergeWordLists(mergedWords, validNormalStr);
-      mergeWordLists(mergedWords, validInvertedStr);
-
-      // Preparem el Canvas overlay per dibuixar les caixes de visió artificial sobre la imatge normal
+      // Dibuixem les caixes de visió artificial sobre la imatge de preview
       const ctx = overlayCanvas.getContext('2d');
       overlayCanvas.width = preview.naturalWidth || preview.width || 600;
       overlayCanvas.height = preview.naturalHeight || preview.height || 800;
       ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-      // Dibuixem les caixes verdes (text vàlid fusionat) i vermelles (tots els descarts no duplicats)
-      const discardedNormal = wordsNormal.filter(w => !validNormal.includes(w));
-      const discardedInverted = wordsInverted.filter(w => !validInverted.includes(w));
-      const discardedNormalStr = wordsNormalStr.filter(w => !validNormalStr.includes(w));
-      const discardedInvertedStr = wordsInvertedStr.filter(w => !validInvertedStr.includes(w));
-      const allDiscarded = [...discardedNormal, ...discardedInverted, ...discardedNormalStr, ...discardedInvertedStr];
-      
       ctx.lineWidth = Math.max(2, Math.round(overlayCanvas.width / 400));
-      
-      // Pintem les àrees descartades en vermell molt tènue
-      allDiscarded.forEach(w => {
+
+      // Descartades en vermell tènue
+      wordsNormal.filter(w => !mergedWords.includes(w)).forEach(w => {
         ctx.strokeStyle = 'rgba(231, 76, 60, 0.3)';
-        ctx.fillStyle = 'rgba(231, 76, 60, 0.03)';
+        ctx.fillStyle   = 'rgba(231, 76, 60, 0.03)';
         ctx.fillRect(w.bbox.x0, w.bbox.y0, w.bbox.x1 - w.bbox.x0, w.bbox.y1 - w.bbox.y0);
         ctx.strokeRect(w.bbox.x0, w.bbox.y0, w.bbox.x1 - w.bbox.x0, w.bbox.y1 - w.bbox.y0);
       });
-
-      // Pintem les àrees vàlides fusionades en verd brillant
+      // Vàlides en verd
       mergedWords.forEach(w => {
         ctx.strokeStyle = 'rgba(46, 204, 113, 0.9)';
-        ctx.fillStyle = 'rgba(46, 204, 113, 0.15)';
+        ctx.fillStyle   = 'rgba(46, 204, 113, 0.15)';
         ctx.fillRect(w.bbox.x0, w.bbox.y0, w.bbox.x1 - w.bbox.x0, w.bbox.y1 - w.bbox.y0);
         ctx.strokeRect(w.bbox.x0, w.bbox.y0, w.bbox.x1 - w.bbox.x0, w.bbox.y1 - w.bbox.y0);
       });
@@ -1126,8 +1069,8 @@ document.addEventListener('DOMContentLoaded', () => {
         status.innerText = '❌ No s\'ha trobat cap bloc de text principal a la portada.';
         resultsContainer.style.display = 'block';
         rawOcr.innerHTML = `<strong>Avís:</strong> S'han filtrat totes les paraules.\n\n` +
-                           `<strong>Paraules brutes detectades abans de filtrar:</strong>\n` +
-                           [...wordsNormal, ...wordsInverted, ...wordsNormalStr, ...wordsInvertedStr].map(w => `- [${w.source}] "${w.text}" (confiança: ${w.confidence}%, alçada: ${w.bbox.y1 - w.bbox.y0}px, y: ${w.bbox.y0}px-${w.bbox.y1}px)`).join('\n');
+                           `<strong>Paraules brutes detectades:</strong>\n` +
+                           wordsNormal.map(w => `- "${w.text}" (confiança: ${w.confidence}%, y: ${w.bbox.y0}px-${w.bbox.y1}px)`).join('\n');
         return;
       }
 

@@ -179,13 +179,17 @@
 
     canvas { display: none; }
   </style>
+  <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
   <script type="importmap">
   {
     "imports": {
-      "/npm/@techstark/opencv-js@%5E4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve, reject) => { console.log('[OpenCV-Proxy] Iniciant...'); if (window.cv && !(window.cv instanceof Promise)) { resolve(window.cv); return; } const existingScript = document.querySelector('script[src*=\"opencv.js\"]'); window.Module = window.Module || {}; const oldInit = window.Module.onRuntimeInitialized; window.Module.onRuntimeInitialized = () => { console.log('[OpenCV-Proxy] Inicialitzat!'); if (oldInit) oldInit(); resolve(window.cv); }; if (!window.cv && !existingScript) { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; script.onerror = (e) => reject(new Error('Error de xarxa descarregant OpenCV (opencv.js)')); document.head.appendChild(script); } });",
-      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@%5E4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve, reject) => { console.log('[OpenCV-Proxy] Iniciant...'); if (window.cv && !(window.cv instanceof Promise)) { resolve(window.cv); return; } const existingScript = document.querySelector('script[src*=\"opencv.js\"]'); window.Module = window.Module || {}; const oldInit = window.Module.onRuntimeInitialized; window.Module.onRuntimeInitialized = () => { console.log('[OpenCV-Proxy] Inicialitzat!'); if (oldInit) oldInit(); resolve(window.cv); }; if (!window.cv && !existingScript) { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; script.onerror = (e) => reject(new Error('Error de xarxa descarregant OpenCV (opencv.js)')); document.head.appendChild(script); } });",
-      "/npm/@techstark/opencv-js@^4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve, reject) => { console.log('[OpenCV-Proxy] Iniciant...'); if (window.cv && !(window.cv instanceof Promise)) { resolve(window.cv); return; } const existingScript = document.querySelector('script[src*=\"opencv.js\"]'); window.Module = window.Module || {}; const oldInit = window.Module.onRuntimeInitialized; window.Module.onRuntimeInitialized = () => { console.log('[OpenCV-Proxy] Inicialitzat!'); if (oldInit) oldInit(); resolve(window.cv); }; if (!window.cv && !existingScript) { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; script.onerror = (e) => reject(new Error('Error de xarxa descarregant OpenCV (opencv.js)')); document.head.appendChild(script); } });",
-      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@^4.10.0-release.1/+esm": "data:text/javascript,export default new Promise((resolve, reject) => { console.log('[OpenCV-Proxy] Iniciant...'); if (window.cv && !(window.cv instanceof Promise)) { resolve(window.cv); return; } const existingScript = document.querySelector('script[src*=\"opencv.js\"]'); window.Module = window.Module || {}; const oldInit = window.Module.onRuntimeInitialized; window.Module.onRuntimeInitialized = () => { console.log('[OpenCV-Proxy] Inicialitzat!'); if (oldInit) oldInit(); resolve(window.cv); }; if (!window.cv && !existingScript) { const script = document.createElement('script'); script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.1/dist/opencv.js'; script.async = true; script.onload = () => { if (window.cv && !(window.cv instanceof Promise)) resolve(window.cv); }; script.onerror = (e) => reject(new Error('Error de xarxa descarregant OpenCV (opencv.js)')); document.head.appendChild(script); } });"
+      "/npm/": "https://cdn.jsdelivr.net/npm/",
+      "/npm/@techstark/opencv-js@%5E4.10.0-release.1/+esm": "../opencv_proxy.js?v=3",
+      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@%5E4.10.0-release.1/+esm": "../opencv_proxy.js?v=3",
+      "/npm/@techstark/opencv-js@^4.10.0-release.1/+esm": "../opencv_proxy.js?v=3",
+      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@^4.10.0-release.1/+esm": "../opencv_proxy.js?v=3",
+      "/npm/@techstark/opencv-js@4.10.0-release.1/+esm": "../opencv_proxy.js?v=3",
+      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/+esm": "../opencv_proxy.js?v=3"
     }
   }
   </script>
@@ -393,12 +397,12 @@
       let recUrl = '';
 
       if (!isLocalFile) {
-        detUrl = new URL('../models/PP-OCRv5_mobile_det_onnx.tar', window.location.href).href;
-        recUrl = new URL('../models/PP-OCRv5_mobile_rec_onnx.tar', window.location.href).href;
+        detUrl = new URL('../models/PP-OCRv5_mobile_det_onnx.tar?t=' + Date.now(), window.location.href).href;
+        recUrl = new URL('../models/PP-OCRv5_mobile_rec_onnx.tar?t=' + Date.now(), window.location.href).href;
       } else {
         // Si estem en file://, demanem els fitxers al CDN del repositori de GitHub
-        detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar';
-        recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar';
+        detUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_det_onnx.tar?t=' + Date.now();
+        recUrl = 'https://rogroc.github.io/open_library/models/PP-OCRv5_mobile_rec_onnx.tar?t=' + Date.now();
       }
       
       console.log("[PaddleOCR] Rutes resoltes al mòbil:", { detUrl, recUrl });
@@ -424,11 +428,77 @@
         ortOptions: {
           backend: 'wasm',
           wasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/',
-          numThreads: 2,
-          simd: true
+          numThreads: 1, // 1 fil per evitar necessitat de COOP/COEP headers i SharedArrayBuffer
+          simd: true,
+          proxy: false  // Desactiva el Web Worker de proxy intern d'ONNX per evitar bloquejos de CORS/sandbox
         }
       });
       console.log("[PaddleOCR] ocrInstance inicialitzat correctament al mòbil.");
+
+      // Solució Híbrida: PaddleOCR per a detecció, Tesseract per a reconeixement
+      if (ocrInstance) {
+        // 1. Ampliem les àrees de detecció (polígons) de PaddleOCR amb un marge de 6px mantenint la inclinació original del polígon
+        if (ocrInstance.detModel) {
+          console.log("[HybridOCR] Configurant ampliació de marges de detecció conservant inclinació (6px)...");
+          const originalDetPredict = ocrInstance.detModel.predict;
+          ocrInstance.detModel.predict = async function(cv, mats, options) {
+            const results = await originalDetPredict.call(ocrInstance.detModel, cv, mats, options);
+            const margin = 6;
+            results.forEach((res, imgIdx) => {
+              if (res && res.boxes) {
+                const mat = mats[imgIdx];
+                const maxW = mat ? mat.cols : 99999;
+                const maxH = mat ? mat.rows : 99999;
+                
+                res.boxes.forEach(box => {
+                  if (box.poly && box.poly.length === 4) {
+                    // Modifiquem cadascun dels 4 punts conservant el paral·lelogram original
+                    // 0: top-left, 1: top-right, 2: bottom-right, 3: bottom-left
+                    box.poly[0][0] = Math.max(0, box.poly[0][0] - margin);
+                    box.poly[0][1] = Math.max(0, box.poly[0][1] - margin);
+                    
+                    box.poly[1][0] = Math.min(maxW, box.poly[1][0] + margin);
+                    box.poly[1][1] = Math.max(0, box.poly[1][1] - margin);
+                    
+                    box.poly[2][0] = Math.min(maxW, box.poly[2][0] + margin);
+                    box.poly[2][1] = Math.min(maxH, box.poly[2][1] + margin);
+                    
+                    box.poly[3][0] = Math.max(0, box.poly[3][0] - margin);
+                    box.poly[3][1] = Math.min(maxH, box.poly[3][1] + margin);
+                  }
+                });
+              }
+            });
+            return results;
+          };
+        }
+
+        // 2. Estratègia de Màscara mòbil: PaddleOCR detecta polígons, Tesseract llegeix la pàgina sencera
+        console.log("[HybridOCR] Estratègia de Màscara mòbil activada.");
+        
+        if (!window.tesseractParallelWorkersInitialized) {
+          console.log("[HybridOCR] Inicialitzant els 2 workers de Tesseract (cat, spa) al mòbil...");
+          const [wCat, wSpa] = await Promise.all([
+            Tesseract.createWorker('cat'),
+            Tesseract.createWorker('spa')
+          ]);
+          window.tesseractWorkerCat = wCat;
+          window.tesseractWorkerSpa = wSpa;
+          await Promise.all([
+            window.tesseractWorkerCat.setParameters({ tessedit_pageseg_mode: '3' }),
+            window.tesseractWorkerSpa.setParameters({ tessedit_pageseg_mode: '3' })
+          ]);
+          window.tesseractParallelWorkersInitialized = true;
+          console.log("[HybridOCR] Workers Tesseract mòbil preparats (PSM 3).");
+        }
+        
+        if (ocrInstance.recModel) {
+          ocrInstance.recModel.predict = async function(cv, mats, options) {
+            return mats.map(() => ({ text: '__MASK_PENDING__', score: 1.0 }));
+          };
+        }
+      }
+
       return ocrInstance;
     } catch (err) {
       console.error("[PaddleOCR] Error en getOcrInstance (mòbil):", err);
@@ -528,7 +598,7 @@
       if (video.readyState >= 2) {
         const vw = video.videoWidth  || 640;
         const vh = video.videoHeight || 480;
-        const scale = Math.min(1, 450 / vw);
+        const scale = Math.min(1, 1000 / vw);
         canvas.width  = Math.round(vw * scale);
         canvas.height = Math.round(vh * scale);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -556,7 +626,7 @@
     const vw = video.videoWidth  || 640;
     const vh = video.videoHeight || 480;
 
-    const scale = Math.min(1, 450 / vw);
+    const scale = Math.min(1, 1000 / vw);
     canvas.width  = Math.round(vw * scale);
     canvas.height = Math.round(vh * scale);
 
@@ -719,14 +789,19 @@
       statusText.textContent = '⚙️ Inicialitzant PaddleOCR (models ~20MB, pot trigar uns segons)...';
       const ocr = await getOcrInstance();
       
-      statusText.textContent = '🔍 Reconeixent text amb xarxa neuronal de PaddleOCR...';
-      const ocrResult = await ocr.predict(normalCanvas);
+      statusText.textContent = '🔍 Detectant àrees de text amb PaddleOCR...';
+      const ocrResult = await ocr.predict(canvas, {
+        text_det_limit_side_len: 960,
+        text_det_limit_type: 'min',
+        text_det_thresh: 0.2,
+        text_det_box_thresh: 0.4
+      });
       const pageResult = ocrResult[0] || {};
-      const items = pageResult.items || [];
+      const detectedPolys = (pageResult.items || []).map(item => item.poly);
       
-      console.log("PaddleOCR completat al mòbil. Elements detectats:", items);
+      console.log("PaddleOCR mòbil: regions detectades:", detectedPolys.length);
       
-      if (items.length === 0) {
+      if (detectedPolys.length === 0) {
         const failMsg = '⚠️ No s\'ha trobat cap text a la portada. Enfoca millor.';
         statusText.style.color = '#e74c3c';
         statusText.textContent = failMsg;
@@ -734,30 +809,126 @@
         return;
       }
 
-      // Convertim els elements a format compatible amb els nostres filtres anteriors
-      const words = items.map(item => {
-        const xs = item.poly.map(p => p[0]);
-        const ys = item.poly.map(p => p[1]);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minY = Math.min(...ys);
-        const maxY = Math.max(...ys);
-        return {
-          text: item.text,
-          confidence: Math.round(item.score * 100),
-          bbox: { x0: minX, y0: minY, x1: maxX, y1: maxY }
-        };
-      });
+      // --- ESTRATÈGIA MÀSCARA (mòbil) ---
+      statusText.textContent = '🎭 Generant imatge màscara...';
 
-      // Filtrem les paraules per mida (alçada) i confiança per treure soroll
+      // Canvas màscara: fons blanc, es dibuixa cada polígon binaritzat (negre sobre blanc)
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = canvas.width;
+      maskCanvas.height = canvas.height;
+      const maskCtx = maskCanvas.getContext('2d');
+      maskCtx.fillStyle = '#ffffff';
+      maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+      const srcCtxM = canvas.getContext('2d');
+      const PAD_M = 8;
+      for (const poly of detectedPolys) {
+        if (!poly || poly.length < 3) continue;
+
+        const xs = poly.map(p => p[0]);
+        const ys = poly.map(p => p[1]);
+        const bx0 = Math.max(0, Math.floor(Math.min(...xs)) - PAD_M);
+        const by0 = Math.max(0, Math.floor(Math.min(...ys)) - PAD_M);
+        const bx1 = Math.min(canvas.width,  Math.ceil(Math.max(...xs)) + PAD_M);
+        const by1 = Math.min(canvas.height, Math.ceil(Math.max(...ys)) + PAD_M);
+        const bw = bx1 - bx0; const bh = by1 - by0;
+        if (bw <= 0 || bh <= 0) continue;
+
+        const regionData = srcCtxM.getImageData(bx0, by0, bw, bh);
+        const d = regionData.data;
+
+        // Convertim a escala de grisos i trobem els percentils 10 i 90 per resoldre el llindar localment
+        const grays = new Uint8Array(bw * bh);
+        for (let i = 0; i < bw * bh; i++) {
+          const r = d[i * 4];
+          const g = d[i * 4 + 1];
+          const b = d[i * 4 + 2];
+          grays[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        }
+
+        const sortedGrays = new Uint8Array(grays);
+        sortedGrays.sort();
+        const p10 = sortedGrays[Math.floor(sortedGrays.length * 0.10)];
+        const p90 = sortedGrays[Math.floor(sortedGrays.length * 0.90)];
+        const threshold = (p10 + p90) / 2;
+
+        // Calculem la brillantor del fons a partir de les vores del polígon
+        const borderWidth = Math.max(1, Math.min(4, Math.floor(Math.min(bw, bh) / 6)));
+        let sumBg = 0;
+        let countBg = 0;
+        for (let y = 0; y < bh; y++) {
+          for (let x = 0; x < bw; x++) {
+            const isBorder = (x < borderWidth || x >= bw - borderWidth || y < borderWidth || y >= bh - borderWidth);
+            if (isBorder) {
+              sumBg += grays[y * bw + x];
+              countBg++;
+            }
+          }
+        }
+        const bgBr = countBg > 0 ? (sumBg / countBg) : 128;
+        const darkText = bgBr > threshold;
+
+        // Binaritzem de forma adaptativa segons si el text és fosc o clar respecte al fons
+        for (let i = 0; i < bw * bh; i++) {
+          const gray = grays[i];
+          const val = darkText ? (gray < threshold ? 0 : 255) : (gray > threshold ? 0 : 255);
+          const dIdx = i * 4;
+          d[dIdx] = val;
+          d[dIdx+1] = val;
+          d[dIdx+2] = val;
+          d[dIdx+3] = 255;
+        }
+
+        const tmpC = document.createElement('canvas');
+        tmpC.width = bw; tmpC.height = bh;
+        tmpC.getContext('2d').putImageData(regionData, 0, 0);
+
+        maskCtx.save();
+        maskCtx.beginPath();
+        const cxp = poly.reduce((s, p) => s + p[0], 0) / poly.length;
+        const cyp = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+        poly.forEach((pt, idx) => {
+          const dx = pt[0] - cxp; const dy = pt[1] - cyp;
+          const len = Math.sqrt(dx*dx + dy*dy) || 1;
+          const ex = pt[0] + (dx/len)*PAD_M; const ey = pt[1] + (dy/len)*PAD_M;
+          if (idx === 0) maskCtx.moveTo(ex, ey); else maskCtx.lineTo(ex, ey);
+        });
+        maskCtx.closePath();
+        maskCtx.clip();
+        maskCtx.drawImage(tmpC, bx0, by0);
+        maskCtx.restore();
+      }
+
+      statusText.textContent = '📖 Llegint text amb Tesseract (pàgina completa)...';
+      const [resCat, resSpa] = await Promise.all([
+        window.tesseractWorkerCat.recognize(maskCanvas),
+        window.tesseractWorkerSpa.recognize(maskCanvas)
+      ]);
+
+      const catConf = resCat.data.confidence;
+      const spaConf = resSpa.data.confidence;
+      const bestRes = catConf >= spaConf ? resCat : resSpa;
+      const bestLang = catConf >= spaConf ? 'cat' : 'spa';
+      console.log(`[HybridOCR mòbil] cat=${catConf}%, spa=${spaConf}% → triat: ${bestLang}`);
+
+      const tesseractWords = bestRes.data.words || [];
+      const words = tesseractWords
+        .filter(w => w.confidence > 30 && w.text.trim().length > 0)
+        .map(w => ({
+          text: w.text.trim(),
+          confidence: w.confidence,
+          bbox: { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 }
+        }));
+
+      // Mantenim el filtratge per alçada per descartar soroll residual
       const allHeights = words.map(w => w.bbox.y1 - w.bbox.y0);
       const maxWordHeight = allHeights.length > 0 ? Math.max(...allHeights) : 0;
-      const heightThreshold = maxWordHeight * 0.20; // descartem elements un 80% més petits que la lletra més gran
-
-      const validWords = words.filter(w => 
-        (w.bbox.y1 - w.bbox.y0) >= heightThreshold && 
-        w.confidence > 40
+      const heightThreshold = maxWordHeight * 0.15;
+      const validWords = words.filter(w =>
+        (w.bbox.y1 - w.bbox.y0) >= heightThreshold &&
+        w.confidence > 30
       );
+
 
       if (validWords.length === 0) {
         const failMsg = '⚠️ Text detectat de baixa qualitat o massa petit.';
